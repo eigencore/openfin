@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/openai": "catalog:",
+    "ai": "catalog:",
     "drizzle-orm": "catalog:",
     "zod": "catalog:"
   },

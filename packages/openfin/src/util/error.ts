@@ -5,10 +5,12 @@ export abstract class NamedError extends Error {
   abstract toObject(): { name: string; data: any }
 
   static create<Name extends string, Data extends z.core.$ZodType>(name: Name, data: Data) {
-    const schema = z.object({
-      name: z.literal(name),
-      data,
-    })
+    const schema = z
+      .object({
+        name: z.literal(name),
+        data,
+      })
+      .meta({ ref: name })
 
     const result = class extends NamedError {
       public static readonly Schema = schema
