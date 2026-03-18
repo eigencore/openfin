@@ -77,7 +77,7 @@ export namespace Database {
 
     const db = drizzle({ client: sqlite })
 
-    const entries = migrations(path.join(import.meta.dirname, "../migration"))
+    const entries = migrations(path.join(import.meta.dirname, "../../migration"))
     if (entries.length > 0) {
       console.log("[db] applying migrations", entries.length)
       migrate(db, entries)
