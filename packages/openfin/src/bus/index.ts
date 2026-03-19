@@ -17,15 +17,6 @@ export namespace Bus {
     }),
   )
 
-  export const MessagePartUpdated = BusEvent.define(
-    "message.part.updated",
-    z.object({
-      sessionID: z.string(),
-      messageID: z.string(),
-      delta: z.string(),
-    }),
-  )
-
   export const SessionError = BusEvent.define(
     "session.error",
     z.object({

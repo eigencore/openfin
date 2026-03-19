@@ -5,9 +5,12 @@ import { HTTPException } from "hono/http-exception"
 import { Bus } from "../bus"
 import { NamedError } from "../util/error"
 import { lazy } from "../util/lazy"
+import { Log } from "../util/log"
 import { SessionRoutes } from "./routes/session"
 import { ProviderRoutes } from "./routes/provider"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
+
+const log = Log.create({ service: "server" })
 
 export namespace Server {
   export const PORT = 4096
@@ -28,7 +31,7 @@ export namespace Server {
         if (err instanceof HTTPException) {
           return c.json({ error: err.message }, { status: err.status as ContentfulStatusCode })
         }
-        console.error("[server] unhandled error", err)
+        log.error("unhandled error", { error: err instanceof Error ? err : String(err) })
         const message = err instanceof Error && err.stack ? err.stack : String(err)
         return c.json(new NamedError.Unknown({ message }).toObject(), { status: 500 })
       })
@@ -36,9 +39,9 @@ export namespace Server {
       // ── Request logging ───────────────────────────────────────────────────
       .use(async (c, next) => {
         const start = Date.now()
-        console.log(`[server] → ${c.req.method} ${c.req.path}`)
+        log.info("request", { method: c.req.method, path: c.req.path })
         await next()
-        console.log(`[server] ← ${c.req.method} ${c.req.path} ${c.res.status} (${Date.now() - start}ms)`)
+        log.info("response", { method: c.req.method, path: c.req.path, status: c.res.status, ms: Date.now() - start })
       })
 
       // ── CORS ──────────────────────────────────────────────────────────────
@@ -59,7 +62,7 @@ export namespace Server {
 
       // ── SSE /event — Bus events in real time ──────────────────────────────
       .get("/event", async (c) => {
-        console.log("[server] event connected")
+        log.info("event connected")
         c.header("X-Accel-Buffering", "no")
         c.header("X-Content-Type-Options", "nosniff")
 
@@ -73,7 +76,7 @@ export namespace Server {
             await stream.writeSSE({ data: JSON.stringify(event) })
           })
 
-          // Heartbeat every 10s to prevent stalled proxy streams (same as opencode)
+          // Heartbeat every 10s to prevent stalled proxy streams
           const heartbeat = setInterval(() => {
             stream.writeSSE({
               data: JSON.stringify({ type: "server.heartbeat", properties: {} }),
@@ -85,7 +88,7 @@ export namespace Server {
               clearInterval(heartbeat)
               unsub()
               resolve()
-              console.log("[server] event disconnected")
+              log.info("event disconnected")
             })
           })
         })
@@ -97,8 +100,9 @@ export namespace Server {
     const server = Bun.serve({
       fetch: app.fetch,
       port,
+      idleTimeout: 255,
     })
-    console.log(`[server] listening on http://localhost:${server.port}`)
+    log.info(`listening on http://localhost:${server.port}`)
     return server
   }
 }

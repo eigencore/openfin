@@ -6,15 +6,20 @@
   "private": true,
   "scripts": {
     "dev": "bun run src/index.ts",
+    "chat": "bun run src/cli/index.ts",
+    "tui": "bun run src/tui/index.ts",
     "build": "bun build src/index.ts --outdir dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/openai": "catalog:",
+    "@opentui/core": "catalog:",
+    "@opentui/solid": "catalog:",
     "ai": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",
+    "solid-js": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

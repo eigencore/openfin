@@ -35,17 +35,25 @@ function parseModelRef(modelId: string): ModelRef {
 }
 
 export namespace Provider {
-  export const DEFAULT_MODEL = "anthropic:claude-sonnet-4-5"
+  /**
+   * Picks a default model based on which API keys are available.
+   * Prefers Anthropic, falls back to OpenAI.
+   */
+  export function defaultModel(): string {
+    if (process.env["ANTHROPIC_API_KEY"]) return "anthropic:claude-sonnet-4-5"
+    if (process.env["OPENAI_API_KEY"]) return "openai:gpt-4o"
+    return "anthropic:claude-sonnet-4-5" // will fail at call time with a clear error
+  }
 
   /**
-   * Returns a Vercel AI SDK LanguageModelV2 for the given model ID.
+   * Returns a Vercel AI SDK LanguageModel for the given model ID.
    * Reads API keys from environment variables.
    *
    * @example
    *   const model = Provider.getModel("anthropic:claude-sonnet-4-5")
    *   const model = Provider.getModel("openai:gpt-4o")
    */
-  export function getModel(modelId: string = DEFAULT_MODEL): LanguageModel {
+  export function getModel(modelId: string = defaultModel()): LanguageModel {
     const { provider, model } = parseModelRef(modelId)
 
     switch (provider) {

@@ -1,5 +1,9 @@
-import { Database } from "./storage/db"
+import { Server } from "./server/server"
+import { ToolRegistry } from "./tool/registry"
+import { GetPriceTool } from "./tool/get-price"
+import { ProfileTools } from "./tool/profile-tools"
 
-const db = Database.Client()
-console.log("[openfin] db ready at", Database.Path)
-console.log("[openfin] tables:", Object.keys(db._.schema ?? {}).join(", "))
+// Register all tools before starting the server
+ToolRegistry.register(GetPriceTool, ...ProfileTools)
+
+Server.listen()

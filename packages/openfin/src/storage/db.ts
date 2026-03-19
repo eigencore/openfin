@@ -7,10 +7,13 @@ import { Context } from "../util/context"
 import { lazy } from "../util/lazy"
 import { Global } from "../global"
 import { NamedError } from "../util/error"
+import { Log } from "../util/log"
 import z from "zod"
 import path from "path"
 import { readFileSync, readdirSync, existsSync } from "fs"
 import * as schema from "./schema"
+
+const log = Log.create({ service: "db" })
 
 export const NotFoundError = NamedError.create(
   "NotFoundError",
@@ -63,7 +66,7 @@ export namespace Database {
   }
 
   export const Client = lazy(() => {
-    console.log("[db] opening", Path)
+    log.info("opening", { path: Path })
 
     const sqlite = new BunDatabase(Path, { create: true })
     state.sqlite = sqlite
@@ -79,7 +82,7 @@ export namespace Database {
 
     const entries = migrations(path.join(import.meta.dirname, "../../migration"))
     if (entries.length > 0) {
-      console.log("[db] applying migrations", entries.length)
+      log.info("applying migrations", { count: entries.length })
       migrate(db, entries)
     }
 
