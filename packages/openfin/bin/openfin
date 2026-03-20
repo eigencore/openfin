@@ -33,7 +33,7 @@ const archMap = { x64: "x64", arm64: "arm64" }
 const platform = platformMap[os.platform()] || os.platform()
 const arch = archMap[os.arch()] || os.arch()
 const binary = platform === "windows" ? "openfin.exe" : "openfin"
-const pkgName = `openfin-${platform}-${arch}`
+const pkgName = `@eigencore/openfin-${platform}-${arch}`
 
 function findBinary(startDir) {
   let current = startDir
@@ -50,7 +50,7 @@ const resolved = findBinary(scriptDir)
 if (!resolved) {
   console.error(
     `openfin: could not find a native binary for ${platform}-${arch}.\n` +
-    `Try reinstalling: npm install -g openfin-ai\n` +
+    `Try reinstalling: npm install -g @eigencore/openfin\n` +
     `Or download a binary from: https://github.com/eigencore/openfin/releases`,
   )
   process.exit(1)
