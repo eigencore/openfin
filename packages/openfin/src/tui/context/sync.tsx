@@ -16,6 +16,7 @@ interface SyncStore {
   messages: Record<string, MessageRow[]>
   parts: Record<string, Message.Part[]>
   streaming: Record<string, StreamingState>
+  errors: Record<string, string>
   loadedSessions: boolean
 }
 
@@ -28,6 +29,7 @@ const SyncContext = createSimpleContext({
       messages: {},
       parts: {},
       streaming: {},
+      errors: {},
       loadedSessions: false,
     })
 
@@ -88,13 +90,15 @@ const SyncContext = createSimpleContext({
       }
 
       if (event.type === "session.error") {
-        const { sessionID } = event.properties
+        const { sessionID, error } = event.properties
         if (sessionID) {
           setStore(
             produce((s) => {
               if (s.streaming[sessionID]) {
                 s.streaming[sessionID].done = true
               }
+              delete s.streaming[sessionID]
+              s.errors[sessionID] = error
             }),
           )
         }
@@ -147,12 +151,21 @@ const SyncContext = createSimpleContext({
       )
     }
 
-    async function sendMessage(sessionId: string, content: string, model?: string): Promise<void> {
+    async function sendMessage(
+      sessionId: string,
+      content: string,
+      model?: string,
+      attachments?: { mime: string; data: string; filename?: string }[],
+    ): Promise<void> {
       // Optimistically add user message
+      const displayContent =
+        attachments?.length
+          ? `${content}${content ? " " : ""}[${attachments.length} image${attachments.length > 1 ? "s" : ""}]`
+          : content
       const userMsg: MessageRow = {
         id: crypto.randomUUID(),
         sessionId,
-        data: { role: "user", content },
+        data: { role: "user", content: displayContent },
         time: { created: Date.now(), updated: Date.now() },
       }
       setStore(
@@ -161,11 +174,13 @@ const SyncContext = createSimpleContext({
           s.messages[sessionId].push(userMsg)
           // Initialize streaming state — content will be filled by SSE message.part.updated events
           s.streaming[sessionId] = { sessionId, content: "", done: false }
+          // Clear any previous error for this session
+          delete s.errors[sessionId]
         }),
       )
 
       try {
-        await sdk.api.sendMessage(sessionId, content, model)
+        await sdk.api.sendMessage(sessionId, content, model, attachments)
         // Server returns 202 immediately; SSE events will drive the rest
       } catch (err) {
         console.error("sendMessage error:", err)

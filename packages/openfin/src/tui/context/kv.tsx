@@ -25,6 +25,8 @@ const KVContext = createSimpleContext({
   name: "KV",
   init: () => {
     const store: Record<string, unknown> = loadStore()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const signals = new Map<string, ReturnType<typeof createSignal<any>>>()
 
     function get<T>(key: string, defaultValue: T): T {
       const val = store[key]
@@ -38,7 +40,10 @@ const KVContext = createSimpleContext({
     }
 
     function signal<T>(name: string, defaultValue: T) {
-      const [read, write] = createSignal<T>(get(name, defaultValue))
+      if (!signals.has(name)) {
+        signals.set(name, createSignal<T>(get(name, defaultValue)))
+      }
+      const [read, write] = signals.get(name) as ReturnType<typeof createSignal<T>>
       return [
         read,
         (value: T) => {

@@ -8,26 +8,22 @@ const _storage = new Map<string, string>()
 
 import { render } from "@opentui/solid"
 import { App } from "./app"
-import { Server } from "../server/server"
+import { API_BASE } from "./context/sdk"
+
+// Silence all logs — nothing should bleed into the TUI terminal
 import { Log } from "../util/log"
+await Log.init({ print: false, dev: false })
 
-// Route server logs to file so they don't bleed into the TUI terminal
-await Log.init({ print: false, dev: true })
+// Verify server is reachable before rendering
+try {
+  const res = await fetch(`${API_BASE}/provider`, { signal: AbortSignal.timeout(3000) })
+  if (!res.ok) throw new Error(`Server responded with ${res.status}`)
+} catch {
+  console.error(`\nOpenFin server is not running. Start it first:\n\n  bun run dev\n`)
+  process.exit(1)
+}
 
-// Register tools before starting the server
-import { ToolRegistry } from "../tool/registry"
-import { GetPriceTool } from "../tool/get-price"
-import { ProfileTools } from "../tool/profile-tools"
-
-ToolRegistry.register(GetPriceTool, ...ProfileTools)
-
-// Start the HTTP server
-Server.listen()
-
-// Give the server a moment to bind, then render the TUI
-setTimeout(() => {
-  render(() => App(), {
-    targetFps: 60,
-    exitOnCtrlC: false,
-  })
-}, 100)
+render(() => App(), {
+  targetFps: 60,
+  exitOnCtrlC: false,
+})

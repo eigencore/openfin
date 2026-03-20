@@ -49,11 +49,11 @@ export function DialogOverlay() {
   const dims = useTerminalDimensions()
 
   useKeyboard((key) => {
-    if (key.name === "escape" && dialog.isOpen()) {
+    if (!dialog.isOpen()) return false
+    if (key.name === "escape") {
       dialog.pop()
-      return true
     }
-    return false
+    return true // consume all keys when dialog is open
   })
 
   return (

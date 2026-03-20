@@ -4,6 +4,7 @@ import { RGBA } from "@opentui/core"
 import { useRoute } from "../../context/route"
 import { useSync } from "../../context/sync"
 import { useKV } from "../../context/kv"
+import { useModel } from "../../component/dialog-model"
 import { SessionHeader } from "./header"
 import { MessageList } from "./messages"
 import { SessionInput } from "./input"
@@ -21,6 +22,7 @@ export function SessionRoute(props: SessionRouteProps) {
   const sync = useSync()
   const kv = useKV()
 
+  const [selectedModel] = useModel()
   const [sidebarPref, setSidebarPref] = kv.signal<"auto" | "hide">("sidebar", "auto")
   const [sidebarOpen, setSidebarOpen] = createSignal(false)
 
@@ -33,7 +35,7 @@ export function SessionRoute(props: SessionRouteProps) {
 
   createEffect(on(() => props.sessionID, (id) => {
     if (props.initialPrompt) {
-      sync.sendMessage(id, props.initialPrompt)
+      sync.sendMessage(id, props.initialPrompt, selectedModel())
     } else {
       sync.loadMessages(id)
     }

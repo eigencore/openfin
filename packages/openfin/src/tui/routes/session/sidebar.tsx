@@ -59,13 +59,14 @@ export function Sidebar(props: SidebarProps) {
   return (
     <Show when={session()}>
       <box
-        backgroundColor={theme().backgroundPanel}
         width={42}
         height="100%"
         paddingTop={1}
         paddingBottom={1}
         paddingLeft={2}
         paddingRight={2}
+        border={["left"]}
+        borderColor={theme().border}
         position={props.overlay ? "absolute" : "relative"}
       >
         <scrollbox
@@ -80,16 +81,12 @@ export function Sidebar(props: SidebarProps) {
           <box flexShrink={0} gap={1} paddingRight={1}>
             {/* Session title */}
             <box paddingRight={1}>
-              <text fg={theme().text}>
-                <b>{title()}</b>
-              </text>
+              <text fg={theme().text}>{title()}</text>
             </box>
 
             {/* Context block */}
             <box>
-              <text fg={theme().text}>
-                <b>Context</b>
-              </text>
+              <text fg={theme().accent}>▌ Context</text>
               <Show
                 when={context()}
                 fallback={<text fg={theme().textMuted}>{messageCount()} messages</text>}
@@ -108,9 +105,7 @@ export function Sidebar(props: SidebarProps) {
             {/* Session info */}
             <Show when={session()}>
               <box>
-                <text fg={theme().text}>
-                  <b>Session</b>
-                </text>
+                <text fg={theme().accent}>▌ Session</text>
                 <text fg={theme().textMuted}>Created {formatDate(session()!.time.created)}</text>
               </box>
             </Show>
@@ -122,11 +117,8 @@ export function Sidebar(props: SidebarProps) {
           {/* Getting started card */}
           <Show when={!gettingStartedDismissed()}>
             <box
-              backgroundColor={theme().backgroundElement}
               paddingTop={1}
               paddingBottom={1}
-              paddingLeft={2}
-              paddingRight={2}
               flexDirection="row"
               gap={1}
             >
@@ -135,9 +127,7 @@ export function Sidebar(props: SidebarProps) {
               </text>
               <box flexGrow={1} gap={1}>
                 <box flexDirection="row" justifyContent="space-between">
-                  <text fg={theme().text}>
-                    <b>Getting started</b>
-                  </text>
+                  <text fg={theme().accent}>▌ Getting started</text>
                   <text fg={theme().textMuted} onMouseDown={() => setGettingStartedDismissed(true)}>
                     ✕
                   </text>

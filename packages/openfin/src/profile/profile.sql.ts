@@ -1,6 +1,34 @@
 import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core"
 import { Timestamps } from "../storage/schema.sql"
 
+export const PortfolioPositionTable = sqliteTable("portfolio_position", {
+  id: text().primaryKey(),
+  symbol: text().notNull(),          // "AAPL", "BTC-USD", "VOO", "AMXL.MX"
+  name: text(),                      // "Apple Inc." — optional display name
+  quantity: real().notNull(),        // number of shares/units held
+  avg_cost: real().notNull(),        // average cost per unit (in currency)
+  currency: text().notNull().default("USD"),
+  asset_type: text().notNull().default("stock"), // "stock" | "etf" | "crypto" | "other"
+  notes: text(),
+  ...Timestamps,
+})
+
+export const RecurringTransactionTable = sqliteTable("recurring_transaction", {
+  id: text().primaryKey(),
+  title: text().notNull(),
+  amount: real().notNull(),
+  type: text().notNull(), // "income" | "expense"
+  category: text().notNull(),
+  account_id: text(),
+  currency: text().notNull().default("MXN"),
+  frequency: text().notNull(), // "daily" | "weekly" | "monthly" | "yearly"
+  interval: integer().notNull().default(1), // every N units (e.g. 2 = biweekly for weekly)
+  next_due: integer().notNull(), // Unix timestamp ms — when to log next
+  active: integer().notNull().default(1), // 1 = active, 0 = paused
+  notes: text(),
+  ...Timestamps,
+})
+
 export const AccountTable = sqliteTable("account", {
   id: text().primaryKey(),
   name: text().notNull(),
@@ -46,6 +74,20 @@ export const GoalTable = sqliteTable("goal", {
   notes: text(),
   ...Timestamps,
 })
+
+export const NetWorthSnapshotTable = sqliteTable(
+  "net_worth_snapshot",
+  {
+    id: text().primaryKey(),
+    date: integer().notNull(), // Unix timestamp ms — day-level granularity (start of day)
+    assets: real().notNull(),
+    debts: real().notNull(),
+    net_worth: real().notNull(),
+    currency: text().notNull().default("MXN"),
+    ...Timestamps,
+  },
+  (table) => [index("net_worth_snapshot_date_idx").on(table.date)],
+)
 
 export const TransactionTable = sqliteTable(
   "transaction",

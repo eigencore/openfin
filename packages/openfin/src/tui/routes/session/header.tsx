@@ -2,9 +2,8 @@ import { createMemo, Show } from "solid-js"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
-import { SplitBorder } from "../../component/border"
 import { useModel } from "../../component/dialog-model"
-import { Provider } from "@/provider/provider"
+import { useModels } from "../../context/models"
 
 interface SessionHeaderProps {
   sessionID: string
@@ -21,6 +20,7 @@ export function SessionHeader(props: SessionHeaderProps) {
   const sync = useSync()
   const dims = useTerminalDimensions()
   const [selectedModel] = useModel()
+  const { models } = useModels()
 
   const session = createMemo(() => sync.store.sessions.find((s) => s.id === props.sessionID))
   const title = createMemo(() => session()?.title ?? "New Session")
@@ -28,7 +28,7 @@ export function SessionHeader(props: SessionHeaderProps) {
 
   const modelName = createMemo(() => {
     const id = selectedModel()
-    return Provider.list().find((m) => m.id === id)?.name ?? id
+    return models().find((m) => m.id === id)?.name ?? id
   })
 
   const tokenInfo = createMemo(() => {
@@ -41,32 +41,20 @@ export function SessionHeader(props: SessionHeaderProps) {
   })
 
   return (
-    <box flexShrink={0}>
-      <box
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={1}
-        border={["left"]}
-        customBorderChars={SplitBorder.customBorderChars}
-        borderColor={theme().border}
-        flexShrink={0}
-        backgroundColor={theme().backgroundPanel}
-      >
-        <box flexDirection={narrow() ? "column" : "row"} justifyContent="space-between" gap={1}>
-          <text fg={theme().text}>
-            <span style={{ bold: true }}>#</span> <span style={{ bold: true }}>{title()}</span>
-          </text>
-          <box flexDirection="row" gap={2} flexShrink={0}>
-            <Show when={tokenInfo()}>
-              <text fg={theme().textMuted} wrapMode="none">
-                {tokenInfo()} tokens
-              </text>
-            </Show>
+    <box flexShrink={0} paddingLeft={2} paddingRight={1}>
+      <box flexDirection={narrow() ? "column" : "row"} justifyContent="space-between" gap={1}>
+        <text fg={theme().text}>
+          <span style={{ fg: theme().accent }}>◆</span>{" "}{title()}
+        </text>
+        <box flexDirection="row" gap={2} flexShrink={0}>
+          <Show when={tokenInfo()}>
             <text fg={theme().textMuted} wrapMode="none">
-              {modelName()}
+              {tokenInfo()} tokens
             </text>
-          </box>
+          </Show>
+          <text fg={theme().textMuted} wrapMode="none">
+            {modelName()}
+          </text>
         </box>
       </box>
     </box>

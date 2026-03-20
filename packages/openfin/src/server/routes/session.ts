@@ -10,9 +10,16 @@ const ParamSchema = z.object({ id: z.string() })
 const CreateSchema = z.object({ title: z.string().optional() })
 const RenameSchema = z.object({ title: z.string().min(1) })
 
+const AttachmentSchema = z.object({
+  mime: z.string(),
+  data: z.string(), // base64
+  filename: z.string().optional(),
+})
+
 const MessageSchema = z.object({
   content: z.string(),
   model: z.string().optional(),
+  attachments: z.array(AttachmentSchema).optional(),
 })
 
 export const SessionRoutes = lazy(() =>
@@ -66,11 +73,11 @@ export const SessionRoutes = lazy(() =>
       }),
       (c) => {
         const { id } = c.req.valid("param")
-        const { content, model } = c.req.valid("json")
+        const { content, model, attachments } = c.req.valid("json")
         // Fire-and-forget — all updates come via SSE Bus events
         ;(async () => {
           try {
-            for await (const _ of Session.chat(id, content, model)) {}
+            for await (const _ of Session.chat(id, content, model, attachments)) {}
           } catch {}
         })()
         return c.body(null, 202)

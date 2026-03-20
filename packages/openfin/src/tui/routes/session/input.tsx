@@ -8,7 +8,8 @@ import { EmptyBorder } from "../../component/border"
 import { useCommandPalette, useCommandRegistry } from "../../component/command"
 import { useModel } from "../../component/dialog-model"
 import { Spinner } from "../../component/spinner"
-import { Provider } from "@/provider/provider"
+import { useModels } from "../../context/models"
+import { readClipboardImage, type ClipboardImage } from "../../util/clipboard"
 
 interface SessionInputProps {
   sessionID: string
@@ -22,10 +23,12 @@ export function SessionInput(props: SessionInputProps) {
   const [selectedModel] = useModel()
   let input: TextareaRenderable
 
+  const { models } = useModels()
   const history = usePromptHistory()
   const [value, setValue] = createSignal("")
   const [sending, setSending] = createSignal(false)
   const [selectedIdx, setSelectedIdx] = createSignal(0)
+  const [attachments, setAttachments] = createSignal<ClipboardImage[]>([])
 
   const isStreaming = createMemo(() => {
     const s = sync.store.streaming[props.sessionID]
@@ -62,12 +65,19 @@ export function SessionInput(props: SessionInputProps) {
       sync.abortSession(props.sessionID)
       return true
     }
+    // Ctrl+V — check clipboard for images
+    if (key.ctrl && key.name === "v") {
+      readClipboardImage().then((img) => {
+        if (img) setAttachments((prev) => [...prev, img])
+      })
+      return false // let default paste continue for text
+    }
     return false
   })
 
   const modelName = createMemo(() => {
     const id = selectedModel()
-    return Provider.list().find((m) => m.id === id)?.name ?? id
+    return models().find((m) => m.id === id)?.name ?? id
   })
 
   async function submit() {
@@ -111,11 +121,15 @@ export function SessionInput(props: SessionInputProps) {
 
     if (sending() || isStreaming()) return
 
+    const pending = attachments()
     history.append({ input: val })
     setValue("")
     input?.clear()
+    setAttachments([])
     setSending(true)
-    sync.sendMessage(props.sessionID, val, selectedModel()).finally(() => setSending(false))
+    sync
+      .sendMessage(props.sessionID, val, selectedModel(), pending.length ? pending : undefined)
+      .finally(() => setSending(false))
   }
 
   return (
@@ -149,13 +163,39 @@ export function SessionInput(props: SessionInputProps) {
         </box>
       </Show>
 
+      <Show when={attachments().length > 0}>
+        <box
+          border={["left"]}
+          borderColor={highlight()}
+          customBorderChars={{ ...EmptyBorder, vertical: "┃" }}
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={1}
+          flexShrink={0}
+          backgroundColor={theme().backgroundPanel}
+        >
+          <box flexDirection="row" gap={1} flexWrap="wrap">
+            <For each={attachments()}>
+              {(img, i) => (
+                <box flexDirection="row" gap={1}>
+                  <text fg={theme().accent}>[img {i() + 1}]</text>
+                  <text fg={theme().textMuted}>{img.filename}</text>
+                  <text fg={theme().textMuted}>·</text>
+                  <text fg={theme().textMuted}>
+                    Ctrl+W to remove
+                  </text>
+                </box>
+              )}
+            </For>
+          </box>
+        </box>
+      </Show>
       <box
         border={["left"]}
         borderColor={highlight()}
         customBorderChars={{
           ...EmptyBorder,
           vertical: "┃",
-          bottomLeft: "╹",
         }}
       >
         <box
@@ -163,7 +203,6 @@ export function SessionInput(props: SessionInputProps) {
           paddingRight={2}
           paddingTop={1}
           flexShrink={0}
-          backgroundColor={theme().backgroundElement}
           flexGrow={1}
         >
           <textarea
@@ -183,6 +222,13 @@ export function SessionInput(props: SessionInputProps) {
               if (e.ctrl && e.name === "u") {
                 setValue("")
                 input?.clear()
+                setAttachments([])
+                e.preventDefault()
+                return
+              }
+              // Ctrl+W — remove last attachment
+              if (e.ctrl && e.name === "w" && attachments().length > 0 && value() === "") {
+                setAttachments((prev) => prev.slice(0, -1))
                 e.preventDefault()
                 return
               }
@@ -250,25 +296,6 @@ export function SessionInput(props: SessionInputProps) {
             </Show>
           </box>
         </box>
-      </box>
-      <box
-        height={1}
-        border={["left"]}
-        borderColor={highlight()}
-        customBorderChars={{
-          ...EmptyBorder,
-          vertical: "╹",
-        }}
-      >
-        <box
-          height={1}
-          border={["bottom"]}
-          borderColor={theme().backgroundElement}
-          customBorderChars={{
-            ...EmptyBorder,
-            horizontal: "▀",
-          }}
-        />
       </box>
     </box>
   )

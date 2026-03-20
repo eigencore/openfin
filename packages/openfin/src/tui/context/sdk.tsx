@@ -31,7 +31,37 @@ export type SSEEvent =
 
 // ── SDK client ────────────────────────────────────────────────────────────────
 
+export interface ModelInfo {
+  id: string
+  name: string
+  provider: string
+  providerName: string
+}
+
+export interface DashboardData {
+  netWorth: { assets: number; debts: number; net_worth: number; currency: string; delta?: number }
+  netWorthHistory: { date: number; value: number }[]
+  topExpenses: { category: string; amount: number }[]
+  accounts: { name: string; type: string; balance: number; currency: string; institution: string | null }[]
+  debts: { name: string; type: string; balance: number; currency: string; due_day: number | null }[]
+  budgets: { category: string; amount: number; spent: number; currency: string; period: string }[]
+  goals: { name: string; target_amount: number; current_amount: number; currency: string; target_date: number | null }[]
+  alerts: { type: string; severity: "warning" | "critical"; message: string }[]
+}
+
 export const api = {
+  async listModels(): Promise<ModelInfo[]> {
+    const res = await fetch(`${API_BASE}/provider`)
+    if (!res.ok) throw new Error(`listModels: ${res.status}`)
+    return res.json()
+  },
+
+  async getDashboard(): Promise<DashboardData> {
+    const res = await fetch(`${API_BASE}/profile/dashboard`)
+    if (!res.ok) throw new Error(`getDashboard: ${res.status}`)
+    return res.json()
+  },
+
   async listSessions(): Promise<SessionInfo[]> {
     const res = await fetch(`${API_BASE}/session`)
     if (!res.ok) throw new Error(`listSessions: ${res.status}`)
@@ -84,11 +114,16 @@ export const api = {
     await fetch(`${API_BASE}/session/${sessionId}/abort`, { method: "POST" })
   },
 
-  async sendMessage(sessionId: string, content: string, model?: string): Promise<void> {
+  async sendMessage(
+    sessionId: string,
+    content: string,
+    model?: string,
+    attachments?: { mime: string; data: string; filename?: string }[],
+  ): Promise<void> {
     const res = await fetch(`${API_BASE}/session/${sessionId}/message`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content, model }),
+      body: JSON.stringify({ content, model, attachments }),
     })
     if (!res.ok) throw new Error(`sendMessage: ${res.status}`)
   },

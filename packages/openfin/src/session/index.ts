@@ -5,6 +5,7 @@ import { SessionTable, MessageTable, PartTable } from "./session.sql"
 import { Provider } from "../provider/provider"
 import { FINANCE_SYSTEM_PROMPT } from "../provider/system"
 import { buildFinancialContext } from "../profile/context"
+import { Skill } from "../skill/skill"
 import { Bus } from "../bus/index"
 import { Message } from "./message"
 import { ToolRegistry } from "../tool/registry"
@@ -146,10 +147,17 @@ export namespace Session {
 
   // ── LLM Streaming ─────────────────────────────────────────────────────────
 
+  export interface Attachment {
+    mime: string
+    data: string // base64
+    filename?: string
+  }
+
   export async function* chat(
     sessionId: string,
     content: string,
     modelId = Provider.defaultModel(),
+    attachments: Attachment[] = [],
   ): AsyncGenerator<string> {
     const now = Date.now()
     const userMsgID = Identifier.ascending("message")
@@ -198,9 +206,21 @@ export namespace Session {
     // 3. Mark session as busy
     await Bus.publish(Bus.SessionStatus, { sessionID: sessionId, status: "busy" })
 
-    // 4. Build system prompt — financial context injected fresh on every call
+    // 4. Build system prompt — financial context + skill list (names+descriptions only, no content)
     const financialContext = buildFinancialContext()
-    const system = financialContext ? `${FINANCE_SYSTEM_PROMPT}\n\n${financialContext}` : FINANCE_SYSTEM_PROMPT
+    const skills = await Skill.load()
+    const skillsContext =
+      skills.length > 0
+        ? [
+            "Skills provide specialized instructions and workflows for specific tasks.",
+            "Use the skill tool to load a skill when a task matches its description.",
+            Skill.fmt(skills, { verbose: true }),
+          ].join("\n")
+        : undefined
+    const parts = [FINANCE_SYSTEM_PROMPT]
+    if (financialContext) parts.push(financialContext)
+    if (skillsContext) parts.push(skillsContext)
+    const system = parts.join("\n\n")
 
     let fullText = ""
     let totalInputTokens = 0
@@ -210,11 +230,23 @@ export namespace Session {
     abortControllers.set(sessionId, controller)
 
     try {
-      const model = Provider.getModel(modelId)
+      const model = await Provider.getModel(modelId)
       const tools = ToolRegistry.toAITools({ sessionID: sessionId, messageID: assistantMsgID, abort: controller.signal })
       // 5. Manual tool loop — each iteration is one LLM step
       const MAX_STEPS = 10
-      let stepMessages: ModelMessage[] = [...history, { role: "user" as const, content }]
+      const userContent =
+        attachments.length > 0
+          ? [
+              { type: "text" as const, text: content },
+              ...attachments.map((a) => ({
+                type: "file" as const,
+                data: a.data,
+                mediaType: a.mime,
+                ...(a.filename ? { filename: a.filename } : {}),
+              })),
+            ]
+          : content
+      let stepMessages: ModelMessage[] = [...history, { role: "user" as const, content: userContent }]
 
       for (let step = 0; step < MAX_STEPS; step++) {
         // Publish step-start part

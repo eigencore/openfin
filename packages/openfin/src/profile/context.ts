@@ -109,5 +109,30 @@ export function buildFinancialContext(): string {
     lines.push("")
   }
 
+  // ── Alerts ───────────────────────────────────────────────────────────────
+  const alerts = Profile.getAlerts()
+  if (alerts.length) {
+    lines.push("ALERTAS ACTIVAS")
+    for (const a of alerts) {
+      const prefix = a.severity === "critical" ? "🔴 CRÍTICO" : "⚠️  AVISO"
+      lines.push(`  ${prefix}: ${a.message}`)
+    }
+    lines.push("")
+  }
+
+  // ── Recent transactions ───────────────────────────────────────────────────
+  const recent = Profile.listTransactions({ limit: 7 })
+  if (recent.length) {
+    lines.push("ÚLTIMAS TRANSACCIONES")
+    const accountMap = new Map(Profile.listAccounts().map((a) => [a.id, a.name]))
+    for (const t of recent) {
+      const dateStr = new Date(t.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
+      const sign = t.type === "expense" ? "-" : "+"
+      const account = t.account_id ? ` [${accountMap.get(t.account_id) ?? t.account_id}]` : ""
+      lines.push(`  ${dateStr} ${sign}${fmt(t.amount, t.currency)} ${t.category} — ${t.description}${account}`)
+    }
+    lines.push("")
+  }
+
   return lines.join("\n")
 }

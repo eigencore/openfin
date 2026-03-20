@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Show, Switch, Match } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
+import { useModels } from "../../context/models"
 import { SplitBorder } from "../../component/border"
 import { Spinner } from "../../component/spinner"
 import type { ScrollBoxRenderable, SyntaxStyle } from "@opentui/core"
@@ -22,7 +23,8 @@ interface MessagesProps {
 // StreamingEntry carries no reactive content — content is read inside the component
 // so that displayItems does NOT recompute on every SSE chunk.
 type StreamingEntry = { id: string; _streaming: true }
-type DisplayItem = MessageRow | StreamingEntry
+type ErrorEntry = { id: string; _error: true; message: string }
+type DisplayItem = MessageRow | StreamingEntry | ErrorEntry
 
 const STREAMING_ENTRY: StreamingEntry = { id: "__streaming", _streaming: true }
 
@@ -33,6 +35,7 @@ export function MessageList(props: MessagesProps) {
 
   const messages = createMemo(() => sync.store.messages[props.sessionID] ?? [])
   const streaming = createMemo(() => sync.store.streaming[props.sessionID])
+  const sessionError = createMemo(() => sync.store.errors[props.sessionID])
   const isStreaming = createMemo(() => {
     const s = streaming()
     return s && !s.done
@@ -44,9 +47,9 @@ export function MessageList(props: MessagesProps) {
   const displayItems = createMemo((): DisplayItem[] => {
     const msgs = messages()
     const s = streaming()
-    if (s) {
-      return [...msgs, STREAMING_ENTRY]
-    }
+    const err = sessionError()
+    if (s) return [...msgs, STREAMING_ENTRY]
+    if (err) return [...msgs, { id: "__error", _error: true, message: err }]
     return msgs
   })
 
@@ -92,6 +95,9 @@ export function MessageList(props: MessagesProps) {
               />
             )
           }
+          if ("_error" in item) {
+            return <ErrorBubble message={(item as any).message} />
+          }
           const msg = item as MessageRow
           return (
             <Show
@@ -106,6 +112,7 @@ export function MessageList(props: MessagesProps) {
                       ? msg.data.time_completed - msg.time.created
                       : undefined
                   }
+                  tokens={msg.data.role === "assistant" ? msg.data.tokens : undefined}
                   syntax={syntax()}
                 />
               }
@@ -121,26 +128,13 @@ export function MessageList(props: MessagesProps) {
 
 function UserBubble(props: { content: string; index: number }) {
   const { theme } = useTheme()
-  const [hover, setHover] = createSignal(false)
 
   return (
-    <box
-      border={["left"]}
-      customBorderChars={SplitBorder.customBorderChars}
-      borderColor={theme().accent}
-      marginTop={props.index === 0 ? 0 : 1}
-    >
-      <box
-        onMouseOver={() => setHover(true)}
-        onMouseOut={() => setHover(false)}
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        backgroundColor={hover() ? theme().backgroundElement : theme().backgroundPanel}
-        flexShrink={0}
-      >
-        <text fg={theme().text}>{props.content}</text>
-      </box>
+    <box marginTop={props.index === 0 ? 0 : 1} paddingLeft={2}>
+      <text>
+        <span style={{ fg: theme().accent }}>{"❯ "}</span>
+        <span style={{ fg: theme().text }}>{props.content}</span>
+      </text>
     </box>
   )
 }
@@ -156,10 +150,16 @@ function AssistantBubble(props: {
   content: string
   model?: string
   duration?: number
+  tokens?: { input: number; output: number; total: number }
   syntax: SyntaxStyle
 }) {
   const { theme } = useTheme()
   const sync = useSync()
+  const { models } = useModels()
+  const modelLabel = createMemo(() => {
+    if (!props.model) return undefined
+    return models().find((m) => m.id === props.model)?.name ?? props.model
+  })
 
   const parts = createMemo(() => {
     const all = sync.store.parts[props.messageID] ?? []
@@ -185,14 +185,19 @@ function AssistantBubble(props: {
           />
         </box>
       </Show>
-      {/* Footer: ▣ model · duration */}
-      <Show when={props.model}>
+      {/* Footer: ▣ model · duration · ↑in ↓out */}
+      <Show when={modelLabel()}>
         <box paddingLeft={3} marginTop={1}>
           <text>
             <span style={{ fg: theme().accent }}>▣ </span>
-            <span style={{ fg: theme().textMuted }}>{props.model}</span>
+            <span style={{ fg: theme().textMuted }}>{modelLabel()}</span>
             <Show when={props.duration}>
               <span style={{ fg: theme().textMuted }}> · {formatDuration(props.duration!)}</span>
+            </Show>
+            <Show when={props.tokens}>
+              <span style={{ fg: theme().textMuted }}>
+                {" · "}↑{props.tokens!.input.toLocaleString()} ↓{props.tokens!.output.toLocaleString()}
+              </span>
             </Show>
           </text>
         </box>
@@ -256,6 +261,25 @@ function StreamingAssistantBubble(props: { sessionID: string; syntax: SyntaxStyl
   )
 }
 
+function ErrorBubble(props: { message: string }) {
+  const { theme } = useTheme()
+
+  return (
+    <box marginTop={1} flexShrink={0}>
+      <box
+        border={["left"]}
+        customBorderChars={SplitBorder.customBorderChars}
+        borderColor={theme().error}
+        paddingTop={1}
+        paddingBottom={1}
+        paddingLeft={2}
+      >
+        <text fg={theme().error}>{props.message}</text>
+      </box>
+    </box>
+  )
+}
+
 // ── Tool rendering ─────────────────────────────────────────────────────────────
 
 function ToolPartRow(props: { part: Message.ToolPart }) {
@@ -298,7 +322,7 @@ function AccountTool(props: { part: Message.ToolPart }) {
 
   return (
     <InlineTool
-      icon="⊕"
+      tool={props.part.tool}
       pending={`Saving account ${inp().name ?? ""}...`}
       running={isRunning()}
       complete={isCompleted() || isError()}
@@ -319,7 +343,7 @@ function DebtTool(props: { part: Message.ToolPart }) {
 
   return (
     <InlineTool
-      icon="−"
+      tool={props.part.tool}
       pending={`Saving debt ${inp().name ?? ""}...`}
       running={isRunning()}
       complete={isCompleted() || isError()}
@@ -340,7 +364,7 @@ function BudgetTool(props: { part: Message.ToolPart }) {
 
   return (
     <InlineTool
-      icon="≡"
+      tool={props.part.tool}
       pending={`Saving budget ${inp().category ?? ""}...`}
       running={isRunning()}
       complete={isCompleted() || isError()}
@@ -361,7 +385,7 @@ function GoalTool(props: { part: Message.ToolPart }) {
 
   return (
     <InlineTool
-      icon="◎"
+      tool={props.part.tool}
       pending={`Saving goal ${inp().name ?? ""}...`}
       running={isRunning()}
       complete={isCompleted() || isError()}
@@ -389,7 +413,7 @@ function TransactionTool(props: { part: Message.ToolPart }) {
 
   return (
     <InlineTool
-      icon="↔"
+      tool={props.part.tool}
       pending={pendingLabel()}
       running={isRunning()}
       complete={isCompleted() || isError()}
@@ -424,7 +448,7 @@ function AnalyzeTool(props: { part: Message.ToolPart }) {
       when={isCompleted()}
       fallback={
         <InlineTool
-          icon="≡"
+          tool={props.part.tool}
           pending={`Analyzing ${inp().period ?? "expenses"}...`}
           running={isRunning()}
           complete={isError()}
@@ -461,7 +485,7 @@ function PriceTool(props: { part: Message.ToolPart }) {
 
   return (
     <InlineTool
-      icon="$"
+      tool={props.part.tool}
       pending={`Fetching ${inp().symbol ?? "price"}...`}
       running={isRunning()}
       complete={isCompleted() || isError()}
@@ -495,7 +519,7 @@ function GenericTool(props: { part: Message.ToolPart }) {
       when={output() !== undefined}
       fallback={
         <InlineTool
-          icon="⚙"
+          tool={props.part.tool}
           pending={`${props.part.tool}...`}
           running={isRunning()}
           complete={isCompleted() || isError()}
@@ -523,7 +547,7 @@ function GenericTool(props: { part: Message.ToolPart }) {
 }
 
 function InlineTool(props: {
-  icon: string
+  tool: string
   pending: string
   complete: boolean
   running: boolean
@@ -532,27 +556,34 @@ function InlineTool(props: {
 }) {
   const { theme } = useTheme()
 
-  const fg = createMemo(() => {
-    if (props.error) return theme().error
-    if (props.running) return theme().text
-    if (props.complete) return theme().textMuted
-    return theme().textMuted
-  })
-
   return (
     <box paddingLeft={3} marginTop={0}>
       <Show
         when={props.running}
         fallback={
-          <text paddingLeft={3} fg={fg()}>
-            <Show fallback={<>~ {props.pending}</>} when={props.complete || props.error}>
-              <span style={{ bold: false }}>{props.icon}</span>{" "}
-              {props.children}
-            </Show>
-          </text>
+          <Show
+            when={props.complete || !!props.error}
+            fallback={<text fg={theme().textMuted}>· {props.pending}</text>}
+          >
+            <text>
+              <span style={{ fg: props.error ? theme().error : theme().textMuted }}>
+                {props.error ? "✗" : "✓"}
+              </span>
+              {"  "}
+              <span style={{ fg: theme().textMuted }}>{props.tool}</span>
+              {"  "}
+              <span style={{ fg: props.error ? theme().error : theme().textMuted }}>
+                {props.children}
+              </span>
+            </text>
+          </Show>
         }
       >
-        <Spinner color={fg()}>{props.children}</Spinner>
+        <Spinner color={theme().accent}>
+          <span style={{ fg: theme().textMuted }}>{props.tool}</span>
+          {"  "}
+          {props.children}
+        </Spinner>
       </Show>
       <Show when={props.error}>
         <text fg={theme().error}>{props.error}</text>
@@ -569,7 +600,6 @@ function BlockTool(props: {
   children: any
 }) {
   const { theme } = useTheme()
-  const [hover, setHover] = createSignal(false)
 
   return (
     <box
@@ -579,22 +609,17 @@ function BlockTool(props: {
       paddingLeft={2}
       marginTop={1}
       gap={1}
-      backgroundColor={hover() ? theme().backgroundElement : theme().backgroundPanel}
       customBorderChars={SplitBorder.customBorderChars}
-      borderColor={theme().background}
-      onMouseOver={() => props.onClick && setHover(true)}
-      onMouseOut={() => setHover(false)}
+      borderColor={theme().border}
       onMouseUp={() => props.onClick?.()}
     >
       <Show
         when={props.running}
         fallback={
-          <text paddingLeft={3} fg={theme().textMuted}>
-            {props.title}
-          </text>
+          <text fg={theme().textMuted}>{props.title}</text>
         }
       >
-        <Spinner color={theme().textMuted}>{props.title}</Spinner>
+        <Spinner color={theme().accent}>{props.title}</Spinner>
       </Show>
       {props.children}
       <Show when={props.error}>

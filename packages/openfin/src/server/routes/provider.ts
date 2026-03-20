@@ -3,7 +3,7 @@ import { lazy } from "../../util/lazy"
 import { Provider } from "../../provider/provider"
 
 export const ProviderRoutes = lazy(() =>
-  new Hono().get("/", (c) => {
-    return c.json(Provider.list())
+  new Hono().get("/", async (c) => {
+    return c.json(await Provider.list())
   }),
 )

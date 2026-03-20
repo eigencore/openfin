@@ -1,6 +1,6 @@
 import { sql, eq, and, gte, lte, desc } from "drizzle-orm"
 import { Database } from "../storage/db"
-import { AccountTable, DebtTable, BudgetTable, GoalTable, TransactionTable } from "./profile.sql"
+import { AccountTable, DebtTable, BudgetTable, GoalTable, TransactionTable, NetWorthSnapshotTable, RecurringTransactionTable, PortfolioPositionTable } from "./profile.sql"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +61,46 @@ export interface Transaction {
   category: string
   description: string
   account_id: string | null
+  currency: string
+}
+
+export type RecurringFrequency = "daily" | "weekly" | "monthly" | "yearly"
+
+export interface RecurringTransaction {
+  id: string
+  title: string
+  amount: number
+  type: TransactionType
+  category: string
+  account_id: string | null
+  currency: string
+  frequency: RecurringFrequency
+  interval: number
+  next_due: number
+  active: boolean
+  notes: string | null
+}
+
+export type AssetType = "stock" | "etf" | "crypto" | "other"
+
+export interface PortfolioPosition {
+  id: string
+  symbol: string
+  name: string | null
+  quantity: number
+  avg_cost: number
+  currency: string
+  asset_type: AssetType
+  notes: string | null
+  time: { created: number; updated: number }
+}
+
+export interface NetWorthSnapshot {
+  id: string
+  date: number
+  assets: number
+  debts: number
+  net_worth: number
   currency: string
 }
 
@@ -163,6 +203,49 @@ export namespace Profile {
     return toAccount(row)
   }
 
+  export function transferBetweenAccounts(
+    fromName: string,
+    toName: string,
+    amount: number,
+    description?: string,
+  ): { fromBalance: number; toBalance: number } | null {
+    const accounts = listAccounts()
+    const from = findByName(accounts, fromName)
+    const to = findByName(accounts, toName)
+    if (!from || !to) return null
+
+    const now = Date.now()
+    const note = description ?? `Transferencia a ${to.name}`
+    const fromBalance = from.balance - amount
+    const toBalance = to.balance + amount
+
+    Database.use((db) => {
+      // Debit source
+      db.update(AccountTable).set({ balance: fromBalance, time_updated: now }).where(eq(AccountTable.id, from.id)).run()
+      // Credit destination
+      db.update(AccountTable).set({ balance: toBalance, time_updated: now }).where(eq(AccountTable.id, to.id)).run()
+      // Log both legs as transactions for full audit trail
+      const baseRow = { date: now, amount, currency: from.currency, time_created: now, time_updated: now }
+      db.insert(TransactionTable).values({
+        ...baseRow, id: crypto.randomUUID(), type: "expense",
+        category: "Transferencia", description: note, account_id: from.id,
+      }).run()
+      db.insert(TransactionTable).values({
+        ...baseRow, id: crypto.randomUUID(), type: "income",
+        category: "Transferencia", description: `Transferencia de ${from.name}`, account_id: to.id,
+      }).run()
+    })
+
+    return { fromBalance, toBalance }
+  }
+
+  export function deleteAccount(name: string): boolean {
+    const existing = findByName(listAccounts(), name)
+    if (!existing) return false
+    Database.use((db) => db.delete(AccountTable).where(eq(AccountTable.id, existing.id)).run())
+    return true
+  }
+
   // ── Debts ──────────────────────────────────────────────────────────────────
 
   export function listDebts(): Debt[] {
@@ -223,6 +306,33 @@ export namespace Profile {
     return toDebt(row)
   }
 
+  export function payDebt(name: string, amount: number): { debt: Debt; paid: number; fullyPaid: boolean } | null {
+    const existing = findByName(listDebts(), name)
+    if (!existing) return null
+    const paid = Math.min(amount, existing.balance)
+    const newBalance = Math.max(0, existing.balance - amount)
+    const now = Date.now()
+    Database.use((db) =>
+      db
+        .update(DebtTable)
+        .set({ balance: newBalance, time_updated: now })
+        .where(eq(DebtTable.id, existing.id))
+        .run(),
+    )
+    return {
+      debt: { ...existing, balance: newBalance, time: { created: existing.time.created, updated: now } },
+      paid,
+      fullyPaid: newBalance === 0,
+    }
+  }
+
+  export function deleteDebt(name: string): boolean {
+    const existing = findByName(listDebts(), name)
+    if (!existing) return false
+    Database.use((db) => db.delete(DebtTable).where(eq(DebtTable.id, existing.id)).run())
+    return true
+  }
+
   // ── Budgets ────────────────────────────────────────────────────────────────
 
   export function listBudgets(): Budget[] {
@@ -272,6 +382,16 @@ export namespace Profile {
     }
     Database.use((db) => db.insert(BudgetTable).values(row).run())
     return toBudget(row)
+  }
+
+  export function deleteBudget(category: string): boolean {
+    const lower = category.toLowerCase()
+    const existing = Database.use((db) =>
+      db.select().from(BudgetTable).all().find((r) => r.category.toLowerCase() === lower),
+    )
+    if (!existing) return false
+    Database.use((db) => db.delete(BudgetTable).where(eq(BudgetTable.id, existing.id)).run())
+    return true
   }
 
   // ── Goals ──────────────────────────────────────────────────────────────────
@@ -331,6 +451,51 @@ export namespace Profile {
     return toGoal(row)
   }
 
+  export function contributeToGoal(
+    name: string,
+    amount: number,
+    accountId?: string,
+  ): { goal: Goal; newAccountBalance?: number } | null {
+    const existing = findByName(listGoals(), name)
+    if (!existing) return null
+    const newAmount = existing.current_amount + amount
+    const now = Date.now()
+
+    let newAccountBalance: number | undefined
+
+    Database.use((db) => {
+      db
+        .update(GoalTable)
+        .set({ current_amount: newAmount, time_updated: now })
+        .where(eq(GoalTable.id, existing.id))
+        .run()
+
+      if (accountId) {
+        const account = db.select().from(AccountTable).where(eq(AccountTable.id, accountId)).limit(1).get()
+        if (account) {
+          newAccountBalance = account.balance - amount
+          db
+            .update(AccountTable)
+            .set({ balance: newAccountBalance, time_updated: now })
+            .where(eq(AccountTable.id, accountId))
+            .run()
+        }
+      }
+    })
+
+    return {
+      goal: { ...existing, current_amount: newAmount },
+      newAccountBalance,
+    }
+  }
+
+  export function deleteGoal(name: string): boolean {
+    const existing = findByName(listGoals(), name)
+    if (!existing) return false
+    Database.use((db) => db.delete(GoalTable).where(eq(GoalTable.id, existing.id)).run())
+    return true
+  }
+
   // ── Transactions ───────────────────────────────────────────────────────────
 
   export function logTransaction(opts: {
@@ -386,6 +551,37 @@ export namespace Profile {
     return { transaction: toTransaction(row), newAccountBalance }
   }
 
+  export function listTransactions(opts: {
+    period?: "this_month" | "last_month" | "last_30_days" | "this_year"
+    type?: TransactionType
+    category?: string
+    account_id?: string
+    limit?: number
+  } = {}): Transaction[] {
+    const { start, end } = opts.period ? periodBounds(opts.period) : { start: 0, end: Date.now() }
+
+    const rows = Database.use((db) =>
+      db
+        .select()
+        .from(TransactionTable)
+        .where(
+          and(
+            opts.period ? gte(TransactionTable.date, start) : undefined,
+            opts.period ? lte(TransactionTable.date, end) : undefined,
+            opts.type ? eq(TransactionTable.type, opts.type) : undefined,
+            opts.account_id ? eq(TransactionTable.account_id, opts.account_id) : undefined,
+          ),
+        )
+        .orderBy(desc(TransactionTable.date))
+        .limit(opts.limit ?? 50)
+        .all(),
+    )
+
+    const category = opts.category?.toLowerCase()
+    const filtered = category ? rows.filter((r) => r.category.toLowerCase() === category) : rows
+    return filtered.map(toTransaction)
+  }
+
   export function analyzeExpenses(opts: {
     period: "this_month" | "last_month" | "last_30_days" | "this_year"
     type?: TransactionType
@@ -427,6 +623,160 @@ export namespace Profile {
   export function currentMonthExpensesByCategory(): Map<string, number> {
     const summary = analyzeExpenses({ period: "this_month", type: "expense" })
     return new Map(summary.map((s) => [s.category, s.total]))
+  }
+
+  // ── Net worth snapshots ────────────────────────────────────────────────────
+
+  export function takeNetWorthSnapshot(): NetWorthSnapshot {
+    const accounts = listAccounts()
+    const debts = listDebts()
+    const assets = accounts.reduce((s, a) => s + a.balance, 0)
+    const totalDebts = debts.reduce((s, d) => s + d.balance, 0)
+    const net_worth = assets - totalDebts
+
+    // Day-level granularity — start of today
+    const now = new Date()
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+
+    const id = crypto.randomUUID()
+    const row = {
+      id,
+      date: dayStart,
+      assets,
+      debts: totalDebts,
+      net_worth,
+      currency: "MXN",
+      time_created: Date.now(),
+      time_updated: Date.now(),
+    }
+
+    // Upsert: if a snapshot already exists for today, update it
+    const existing = Database.use((db) =>
+      db.select().from(NetWorthSnapshotTable).where(eq(NetWorthSnapshotTable.date, dayStart)).limit(1).get(),
+    )
+
+    if (existing) {
+      Database.use((db) =>
+        db
+          .update(NetWorthSnapshotTable)
+          .set({ assets, debts: totalDebts, net_worth, time_updated: Date.now() })
+          .where(eq(NetWorthSnapshotTable.id, existing.id))
+          .run(),
+      )
+      return { ...row, id: existing.id }
+    }
+
+    Database.use((db) => db.insert(NetWorthSnapshotTable).values(row).run())
+    return row
+  }
+
+  export function getNetWorthHistory(limit = 30): NetWorthSnapshot[] {
+    return Database.use((db) =>
+      db
+        .select()
+        .from(NetWorthSnapshotTable)
+        .orderBy(desc(NetWorthSnapshotTable.date))
+        .limit(limit)
+        .all()
+        .map((r) => ({
+          id: r.id,
+          date: r.date,
+          assets: r.assets,
+          debts: r.debts,
+          net_worth: r.net_worth,
+          currency: r.currency,
+        })),
+    )
+  }
+
+  // ── Alerts ─────────────────────────────────────────────────────────────────
+
+  export interface Alert {
+    type: "overbudget" | "near_budget" | "debt_due" | "goal_at_risk" | "unusual_spending"
+    severity: "warning" | "critical"
+    message: string
+  }
+
+  export function getAlerts(): Alert[] {
+    const alerts: Alert[] = []
+    const now = new Date()
+    const today = now.getDate()
+
+    // ── Over-budget / near-budget ──────────────────────────────────────────
+    const budgets = listBudgets()
+    const spent = currentMonthExpensesByCategory()
+
+    for (const b of budgets) {
+      const used = spent.get(b.category.toLowerCase()) ?? 0
+      const ratio = used / b.amount
+      if (ratio >= 1) {
+        alerts.push({
+          type: "overbudget",
+          severity: "critical",
+          message: `Presupuesto de "${b.category}" excedido: $${used.toFixed(0)} / $${b.amount.toFixed(0)} (${Math.round(ratio * 100)}%)`,
+        })
+      } else if (ratio >= 0.8) {
+        alerts.push({
+          type: "near_budget",
+          severity: "warning",
+          message: `"${b.category}" al ${Math.round(ratio * 100)}% del presupuesto mensual ($${used.toFixed(0)} / $${b.amount.toFixed(0)})`,
+        })
+      }
+    }
+
+    // ── Unusual spending (current month > 150% of 3-month average) ─────────
+    const prevSummaries = [
+      analyzeExpenses({ period: "last_month", type: "expense" }),
+    ]
+    const avgByCategory = new Map<string, number>()
+    for (const summary of prevSummaries) {
+      for (const s of summary) {
+        const key = s.category.toLowerCase()
+        avgByCategory.set(key, (avgByCategory.get(key) ?? 0) + s.total)
+      }
+    }
+    for (const [cat, total] of spent.entries()) {
+      const avg = avgByCategory.get(cat)
+      if (avg && avg > 0 && total > avg * 1.5) {
+        alerts.push({
+          type: "unusual_spending",
+          severity: "warning",
+          message: `Gasto inusual en "${cat}": $${total.toFixed(0)} este mes vs $${avg.toFixed(0)} el mes pasado (+${Math.round((total / avg - 1) * 100)}%)`,
+        })
+      }
+    }
+
+    // ── Debt due dates (within next 7 days) ────────────────────────────────
+    const debts = listDebts()
+    for (const d of debts) {
+      if (!d.due_day) continue
+      const daysUntilDue = d.due_day >= today ? d.due_day - today : 30 - today + d.due_day
+      if (daysUntilDue <= 7) {
+        alerts.push({
+          type: "debt_due",
+          severity: daysUntilDue <= 2 ? "critical" : "warning",
+          message: `Pago de "${d.name}" vence en ${daysUntilDue === 0 ? "hoy" : `${daysUntilDue} día${daysUntilDue === 1 ? "" : "s"}`} (día ${d.due_day}). Mínimo: $${(d.min_payment ?? 0).toFixed(0)}`,
+        })
+      }
+    }
+
+    // ── Goals at risk (deadline within 60 days, progress < 80%) ───────────
+    const goals = listGoals()
+    for (const g of goals) {
+      if (!g.target_date) continue
+      const daysLeft = Math.ceil((g.target_date - now.getTime()) / (1000 * 60 * 60 * 24))
+      const progress = g.current_amount / g.target_amount
+      if (daysLeft > 0 && daysLeft <= 60 && progress < 0.8) {
+        const remaining = g.target_amount - g.current_amount
+        alerts.push({
+          type: "goal_at_risk",
+          severity: daysLeft <= 14 ? "critical" : "warning",
+          message: `Meta "${g.name}" en riesgo: ${Math.round(progress * 100)}% completada, faltan $${remaining.toFixed(0)} en ${daysLeft} días`,
+        })
+      }
+    }
+
+    return alerts.sort((a, b) => (a.severity === "critical" ? -1 : 1) - (b.severity === "critical" ? -1 : 1))
   }
 
   // ── Row mappers ────────────────────────────────────────────────────────────
@@ -494,5 +844,285 @@ export namespace Profile {
       account_id: r.account_id ?? null,
       currency: r.currency,
     }
+  }
+
+  function toRecurring(r: typeof RecurringTransactionTable.$inferSelect): RecurringTransaction {
+    return {
+      id: r.id,
+      title: r.title,
+      amount: r.amount,
+      type: r.type as TransactionType,
+      category: r.category,
+      account_id: r.account_id ?? null,
+      currency: r.currency,
+      frequency: r.frequency as RecurringFrequency,
+      interval: r.interval,
+      next_due: r.next_due,
+      active: r.active === 1,
+      notes: r.notes ?? null,
+    }
+  }
+
+  // ── Recurring transactions ─────────────────────────────────────────────────
+
+  /** Advance a next_due timestamp by one interval. */
+  function advanceNextDue(next_due: number, frequency: RecurringFrequency, interval: number): number {
+    const d = new Date(next_due)
+    switch (frequency) {
+      case "daily":
+        d.setDate(d.getDate() + interval)
+        break
+      case "weekly":
+        d.setDate(d.getDate() + interval * 7)
+        break
+      case "monthly":
+        d.setMonth(d.getMonth() + interval)
+        break
+      case "yearly":
+        d.setFullYear(d.getFullYear() + interval)
+        break
+    }
+    return d.getTime()
+  }
+
+  export function createRecurring(opts: {
+    title: string
+    amount: number
+    type: TransactionType
+    category: string
+    account_id?: string
+    currency?: string
+    frequency: RecurringFrequency
+    interval?: number
+    start_date?: number // Unix ms — defaults to today
+    notes?: string
+  }): RecurringTransaction {
+    const now = Date.now()
+    // Start of today in local time (midnight)
+    const startOfDay = (ts: number) => {
+      const d = new Date(ts)
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+    }
+    const id = crypto.randomUUID()
+    const interval = opts.interval ?? 1
+    const next_due = startOfDay(opts.start_date ?? now)
+    const row = {
+      id,
+      title: opts.title,
+      amount: opts.amount,
+      type: opts.type,
+      category: opts.category,
+      account_id: opts.account_id ?? null,
+      currency: opts.currency ?? "MXN",
+      frequency: opts.frequency,
+      interval,
+      next_due,
+      active: 1,
+      notes: opts.notes ?? null,
+      time_created: now,
+      time_updated: now,
+    }
+    Database.use((db) => db.insert(RecurringTransactionTable).values(row).run())
+    return toRecurring(row)
+  }
+
+  export function listRecurring(): RecurringTransaction[] {
+    return Database.use((db) =>
+      db.select().from(RecurringTransactionTable).all().map(toRecurring),
+    )
+  }
+
+  export function deleteRecurring(id: string): boolean {
+    const existing = Database.use((db) =>
+      db.select().from(RecurringTransactionTable).where(eq(RecurringTransactionTable.id, id)).get(),
+    )
+    if (!existing) return false
+    Database.use((db) => db.delete(RecurringTransactionTable).where(eq(RecurringTransactionTable.id, id)).run())
+    return true
+  }
+
+  export function setRecurringActive(id: string, active: boolean): RecurringTransaction | null {
+    const now = Date.now()
+    Database.use((db) =>
+      db
+        .update(RecurringTransactionTable)
+        .set({ active: active ? 1 : 0, time_updated: now })
+        .where(eq(RecurringTransactionTable.id, id))
+        .run(),
+    )
+    const row = Database.use((db) =>
+      db.select().from(RecurringTransactionTable).where(eq(RecurringTransactionTable.id, id)).get(),
+    )
+    return row ? toRecurring(row) : null
+  }
+
+  /**
+   * Process all due recurring transactions.
+   * Returns the number of transactions logged.
+   */
+  export function processDueRecurring(): number {
+    const now = Date.now()
+    const due = Database.use((db) =>
+      db
+        .select()
+        .from(RecurringTransactionTable)
+        .where(
+          and(
+            eq(RecurringTransactionTable.active, 1),
+            lte(RecurringTransactionTable.next_due, now),
+          ),
+        )
+        .all(),
+    )
+
+    let count = 0
+    for (const row of due) {
+      const rec = toRecurring(row)
+
+      // Log transaction (reuse existing logTransaction logic inline to avoid circular)
+      const txNow = rec.next_due // use the scheduled date, not today
+      Database.use((db) => {
+        db.insert(TransactionTable).values({
+          id: crypto.randomUUID(),
+          date: txNow,
+          amount: rec.amount,
+          type: rec.type,
+          category: rec.category,
+          description: rec.title,
+          account_id: rec.account_id,
+          currency: rec.currency,
+          time_created: now,
+          time_updated: now,
+        }).run()
+
+        // Update linked account balance
+        if (rec.account_id) {
+          const account = db.select().from(AccountTable).where(eq(AccountTable.id, rec.account_id)).get()
+          if (account) {
+            const delta = rec.type === "expense" ? -rec.amount : rec.amount
+            db.update(AccountTable)
+              .set({ balance: account.balance + delta, time_updated: now })
+              .where(eq(AccountTable.id, rec.account_id))
+              .run()
+          }
+        }
+
+        // Advance next_due
+        const newNextDue = advanceNextDue(rec.next_due, rec.frequency, rec.interval)
+        db.update(RecurringTransactionTable)
+          .set({ next_due: newNextDue, time_updated: now })
+          .where(eq(RecurringTransactionTable.id, rec.id))
+          .run()
+      })
+
+      count++
+    }
+
+    return count
+  }
+
+  // ── Portfolio ──────────────────────────────────────────────────────────────
+
+  function toPosition(row: typeof PortfolioPositionTable.$inferSelect): PortfolioPosition {
+    return {
+      id: row.id,
+      symbol: row.symbol,
+      name: row.name ?? null,
+      quantity: row.quantity,
+      avg_cost: row.avg_cost,
+      currency: row.currency,
+      asset_type: row.asset_type as AssetType,
+      notes: row.notes ?? null,
+      time: { created: row.time_created, updated: row.time_updated },
+    }
+  }
+
+  export function addPosition(opts: {
+    symbol: string
+    name?: string
+    quantity: number
+    avg_cost: number
+    currency?: string
+    asset_type?: AssetType
+    notes?: string
+  }): PortfolioPosition {
+    const now = Date.now()
+    const symbol = opts.symbol.toUpperCase()
+
+    // If position already exists for this symbol, update it (weighted average cost)
+    const existing = Database.use((db) =>
+      db.select().from(PortfolioPositionTable).where(eq(PortfolioPositionTable.symbol, symbol)).get(),
+    )
+
+    if (existing) {
+      const totalQuantity = existing.quantity + opts.quantity
+      const newAvgCost =
+        (existing.quantity * existing.avg_cost + opts.quantity * opts.avg_cost) / totalQuantity
+      Database.use((db) =>
+        db
+          .update(PortfolioPositionTable)
+          .set({
+            quantity: totalQuantity,
+            avg_cost: newAvgCost,
+            name: opts.name ?? existing.name,
+            notes: opts.notes ?? existing.notes,
+            time_updated: now,
+          })
+          .where(eq(PortfolioPositionTable.id, existing.id))
+          .run(),
+      )
+      return toPosition({ ...existing, quantity: totalQuantity, avg_cost: newAvgCost, time_updated: now })
+    }
+
+    const id = crypto.randomUUID()
+    const row = {
+      id,
+      symbol,
+      name: opts.name ?? null,
+      quantity: opts.quantity,
+      avg_cost: opts.avg_cost,
+      currency: opts.currency ?? "USD",
+      asset_type: opts.asset_type ?? "stock",
+      notes: opts.notes ?? null,
+      time_created: now,
+      time_updated: now,
+    }
+    Database.use((db) => db.insert(PortfolioPositionTable).values(row).run())
+    return toPosition(row)
+  }
+
+  export function listPositions(): PortfolioPosition[] {
+    return Database.use((db) =>
+      db.select().from(PortfolioPositionTable).all(),
+    ).map(toPosition)
+  }
+
+  export function updatePosition(
+    id: string,
+    opts: { quantity?: number; avg_cost?: number; name?: string; notes?: string },
+  ): PortfolioPosition | null {
+    const now = Date.now()
+    const existing = Database.use((db) =>
+      db.select().from(PortfolioPositionTable).where(eq(PortfolioPositionTable.id, id)).get(),
+    )
+    if (!existing) return null
+    const updates: Partial<typeof PortfolioPositionTable.$inferInsert> = { time_updated: now }
+    if (opts.quantity !== undefined) updates.quantity = opts.quantity
+    if (opts.avg_cost !== undefined) updates.avg_cost = opts.avg_cost
+    if (opts.name !== undefined) updates.name = opts.name
+    if (opts.notes !== undefined) updates.notes = opts.notes
+    Database.use((db) =>
+      db.update(PortfolioPositionTable).set(updates).where(eq(PortfolioPositionTable.id, id)).run(),
+    )
+    return toPosition({ ...existing, ...updates })
+  }
+
+  export function closePosition(id: string): boolean {
+    const existing = Database.use((db) =>
+      db.select().from(PortfolioPositionTable).where(eq(PortfolioPositionTable.id, id)).get(),
+    )
+    if (!existing) return false
+    Database.use((db) => db.delete(PortfolioPositionTable).where(eq(PortfolioPositionTable.id, id)).run())
+    return true
   }
 }

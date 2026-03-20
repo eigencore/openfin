@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from "solid-js"
+import { createResource, createSignal, Show } from "solid-js"
 import { useKeyboard, useTerminalDimensions } from "@opentui/solid"
 import { useTheme } from "../context/theme"
 import { useRoute } from "../context/route"
@@ -7,17 +7,12 @@ import { useExit } from "../context/exit"
 import { useCommandPalette } from "../component/command"
 import { useDialog } from "../ui/dialog"
 import { Logo, LOGO_HEIGHT, LOGO_WIDTH } from "../component/logo"
+import { DashboardPanel } from "../component/dashboard"
 import { Installation } from "../../installation"
+import { api } from "../context/sdk"
 
-const TIPS = [
-  "Press / to open the command palette",
-  "Type /new to start a new session",
-  "Type /sessions to browse your history",
-  "Type /accounts to view your accounts",
-  "Type /budgets to manage budgets",
-  "Type /goals to track financial goals",
-  "Press Ctrl+C or type /exit to quit",
-]
+const PANEL_WIDTH = 44
+const MIN_WIDTH_FOR_PANEL = 80
 
 export function HomeRoute() {
   const { theme } = useTheme()
@@ -29,21 +24,20 @@ export function HomeRoute() {
   const dialog = useDialog()
 
   const [input, setInput] = createSignal("")
-  const [tipIdx, setTipIdx] = createSignal(0)
 
-  // Rotate tips
-  onMount(() => {
-    const timer = setInterval(() => {
-      setTipIdx((i) => (i + 1) % TIPS.length)
-    }, 4000)
-    return () => clearInterval(timer)
-  })
+  const [dashboard] = createResource(() => api.getDashboard().catch(() => null))
 
-  const logoX = () => Math.max(0, Math.floor((dims().width - LOGO_WIDTH) / 2))
-  const logoY = () => Math.max(1, Math.floor((dims().height - LOGO_HEIGHT - 8) / 2))
-  const inputY = () => logoY() + LOGO_HEIGHT + 2
-  const inputWidth = () => Math.min(60, dims().width - 4)
-  const inputX = () => Math.floor((dims().width - inputWidth()) / 2)
+  const showPanel = () => dims().width >= MIN_WIDTH_FOR_PANEL && dashboard() != null
+
+  const leftWidth = () => (showPanel() ? dims().width - PANEL_WIDTH - 1 : dims().width)
+
+  const logoX = () => Math.max(0, Math.floor((leftWidth() - LOGO_WIDTH) / 2))
+  const logoY = () => Math.max(1, Math.floor((dims().height - LOGO_HEIGHT - 6) / 2))
+  const shortcutsY = () => logoY() + LOGO_HEIGHT + 2
+  const promptY = () => shortcutsY() + 2
+
+  const panelX = () => dims().width - PANEL_WIDTH
+  const panelH = () => dims().height
 
   useKeyboard((key) => {
     if (dialog.isOpen()) return false
@@ -58,7 +52,6 @@ export function HomeRoute() {
         setInput("")
         return true
       }
-      // Non-slash input → create session and chat
       createAndChat(val)
       setInput("")
       return true
@@ -69,9 +62,10 @@ export function HomeRoute() {
     }
     if (key.sequence && key.sequence.length === 1) {
       const ch = key.sequence
-      if (ch === "/" && input() === "") {
-        showCommands()
-        return true
+      if (input() === "") {
+        if (ch === "/") { showCommands(); return true }
+        if (ch === "n") { openNewSession(); return true }
+        if (ch === "s") { handleSlashInput("/sessions"); return true }
       }
       setInput((s) => s + ch)
       return true
@@ -79,10 +73,16 @@ export function HomeRoute() {
     return false
   })
 
+  async function openNewSession() {
+    const session = await sync.createSession()
+    route.navigate({ type: "session", sessionID: session.id })
+  }
+
   async function createAndChat(content: string) {
     const session = await sync.createSession()
     route.navigate({ type: "session", sessionID: session.id, initialPrompt: content })
   }
+
 
   return (
     <>
@@ -93,50 +93,53 @@ export function HomeRoute() {
       <text
         position="absolute"
         top={logoY() + LOGO_HEIGHT + 1}
-        left={Math.floor((dims().width - 32) / 2)}
+        left={logoX()}
         fg={theme().textMuted}
       >
-        AI-powered financial assistant · terminal
+        {"Your AI-powered financial assistant"}
       </text>
 
-      {/* Input box */}
-      <box
-        position="absolute"
-        top={inputY()}
-        left={inputX()}
-        width={inputWidth()}
-        height={3}
-        backgroundColor={theme().backgroundPanel}
-        border={true}
-        borderColor={theme().border}
-        borderStyle="rounded"
-        paddingLeft={2}
-      >
+      {/* Shortcuts */}
+      <text position="absolute" top={shortcutsY()} left={logoX()}>
+        <span style={{ fg: theme().accent }}>{"n"}</span>
+        <span style={{ fg: theme().textMuted }}>{"  new   "}</span>
+        <span style={{ fg: theme().accent }}>{"s"}</span>
+        <span style={{ fg: theme().textMuted }}>{"  sessions   "}</span>
+        <span style={{ fg: theme().accent }}>{"/"}</span>
+        <span style={{ fg: theme().textMuted }}>{"  comandos"}</span>
+      </text>
+
+      {/* Minimal prompt */}
+      <text position="absolute" top={promptY()} left={logoX()}>
+        <span style={{ fg: theme().accent }}>{"❯ "}</span>
         <Show when={!input()}>
-          <text fg={theme().textMuted}>Type / for commands or ask anything...</text>
+          <span style={{ fg: theme().textMuted }}>{"ask anything..."}</span>
         </Show>
         <Show when={!!input()}>
-          <text fg={theme().text}>
-            {input()}<span style={{ fg: theme().accent }}>█</span>
-          </text>
+          <span style={{ fg: theme().text }}>{input()}</span>
+          <span style={{ fg: theme().accent }}>{"█"}</span>
         </Show>
-      </box>
+      </text>
 
-      {/* Tip */}
+      {/* Financial dashboard panel */}
+      <Show when={showPanel()}>
+        <DashboardPanel
+          data={dashboard()!}
+          theme={theme()}
+          x={panelX()}
+          y={1}
+          width={PANEL_WIDTH}
+          height={panelH() - 2}
+        />
+      </Show>
+
+      {/* Footer — version centered */}
       <text
         position="absolute"
-        top={inputY() + 4}
-        left={Math.floor((dims().width - (TIPS[tipIdx()] ?? "").length) / 2)}
+        top={dims().height - 1}
+        left={Math.floor((leftWidth() - Installation.VERSION.length) / 2)}
         fg={theme().textMuted}
       >
-        {TIPS[tipIdx()]}
-      </text>
-
-      {/* Footer */}
-      <text position="absolute" top={dims().height - 2} left={2} fg={theme().textMuted}>
-        {process.cwd()}
-      </text>
-      <text position="absolute" top={dims().height - 2} left={dims().width - Installation.VERSION.length - 1} fg={theme().textMuted}>
         {Installation.VERSION}
       </text>
     </>

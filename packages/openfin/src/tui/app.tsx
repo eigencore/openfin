@@ -11,6 +11,7 @@ import { DialogSelect } from "./ui/dialog-select"
 import { DialogPrompt } from "./ui/dialog-prompt"
 import { CommandProvider, useCommandRegistry, useCommandPalette } from "./component/command"
 import { PromptHistoryProvider } from "./context/prompt-history"
+import { ModelsProvider } from "./context/models"
 import { DialogModel } from "./component/dialog-model"
 import { HomeRoute } from "./routes/home"
 import { SessionRoute } from "./routes/session/index"
@@ -267,6 +268,7 @@ export function App() {
           <RouteProvider>
             <SDKProvider>
               <SyncProvider>
+                <ModelsProvider>
                 <ToastProvider>
                   <DialogProvider>
                     <CommandProvider>
@@ -276,6 +278,7 @@ export function App() {
                     </CommandProvider>
                   </DialogProvider>
                 </ToastProvider>
+                </ModelsProvider>
               </SyncProvider>
             </SDKProvider>
           </RouteProvider>
