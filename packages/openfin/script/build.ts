@@ -97,10 +97,17 @@ for (const { os, arch } of activeTargets) {
     process.exit(1)
   }
 
-  // Rename the bun-generated binary (named after entrypoint dir "src") to the correct name
-  const bunOutput = path.join(tmpDir, "index")
-  const bunOutputAlt = path.join(tmpDir, "src")
-  const actualOutput = fs.existsSync(bunOutput) ? bunOutput : bunOutputAlt
+  // Rename the bun-generated binary to the correct name.
+  // Bun names the output after the entrypoint filename (index) or its parent dir (src),
+  // and appends .exe on Windows.
+  const ext = os === "win32" ? ".exe" : ""
+  const candidates = ["index", "src"].map((n) => path.join(tmpDir, n + ext))
+  const actualOutput = candidates.find((p) => fs.existsSync(p))
+  if (!actualOutput) {
+    const found = fs.readdirSync(tmpDir)
+    console.error(`Build output not found in ${tmpDir}. Contents: ${found.join(", ")}`)
+    process.exit(1)
+  }
   fs.renameSync(actualOutput, path.join(dir, outFile))
   fs.rmSync(tmpDir, { recursive: true, force: true })
 
