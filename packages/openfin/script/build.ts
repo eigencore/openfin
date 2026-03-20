@@ -81,7 +81,8 @@ for (const { os, arch } of activeTargets) {
     --compile \
     --target=${target} \
     --outfile=${outFile} \
-    --define OPENFIN_VERSION='"${version}"'`
+    --define OPENFIN_VERSION='"${version}"' \
+    --define 'process.env.NODE_ENV="production"'`
 
   // Write platform package.json for npm publish
   const pkgJson = {

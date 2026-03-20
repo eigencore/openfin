@@ -54,20 +54,19 @@ OpenFin defaults to `claude-sonnet-4-5` and falls back to `gpt-4o` if `ANTHROPIC
 
 ## Usage
 
-The `openfin` binary uses subcommands. The server must be running for CLI and Telegram to work.
+The `openfin` binary uses subcommands. The server must be running for all clients to work.
 
 ```
 openfin            # start the HTTP server (port 4096)
+openfin tui        # full-screen terminal UI
 openfin chat       # readline REPL
 openfin telegram   # Telegram bot
 ```
 
-> **Terminal UI** — requires [Bun](https://bun.sh). Install from source and run `bun run tui`.
-
-**TUI (from source)**
+**TUI (recommended)**
 ```bash
-bun run dev      # Terminal 1
-bun run tui      # Terminal 2
+openfin          # Terminal 1
+openfin tui      # Terminal 2
 ```
 
 **CLI REPL**

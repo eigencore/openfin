@@ -2,9 +2,7 @@ const subcommand = process.argv[2]
 
 switch (subcommand) {
   case "tui":
-    console.error("The TUI requires Bun. Install it at https://bun.sh, then run:")
-    console.error("  bun run tui")
-    process.exit(1)
+    await import("./tui/index")
     break
 
   case "chat":
