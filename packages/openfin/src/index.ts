@@ -2,7 +2,9 @@ const subcommand = process.argv[2]
 
 switch (subcommand) {
   case "tui":
-    await import("./tui/index")
+    console.error("The TUI requires Bun. Install it at https://bun.sh, then run:")
+    console.error("  bun run tui")
+    process.exit(1)
     break
 
   case "chat":
@@ -20,7 +22,7 @@ switch (subcommand) {
 
   default:
     console.error(`Unknown subcommand: ${subcommand}`)
-    console.error(`Usage: openfin [server|tui|chat|telegram]`)
+    console.error(`Usage: openfin [server|chat|telegram]`)
     process.exit(1)
 }
 
