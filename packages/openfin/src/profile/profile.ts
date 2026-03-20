@@ -4,7 +4,7 @@ import { AccountTable, DebtTable, BudgetTable, GoalTable, TransactionTable, NetW
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type AccountType = "checking" | "savings" | "investment" | "cash" | "other"
+export type AccountType = "checking" | "savings" | "investment" | "cash" | "credit_card" | "other"
 export type DebtType = "credit_card" | "loan" | "mortgage" | "other"
 export type TransactionType = "income" | "expense"
 export type BudgetPeriod = "monthly" | "weekly"
@@ -13,7 +13,8 @@ export interface Account {
   id: string
   name: string
   type: AccountType
-  balance: number
+  balance: number          // negative = amount owed (credit cards)
+  credit_limit: number | null
   currency: string
   institution: string | null
   notes: string | null
@@ -162,6 +163,7 @@ export namespace Profile {
     name: string
     type: AccountType
     balance: number
+    credit_limit?: number
     currency?: string
     institution?: string
     notes?: string
@@ -176,6 +178,7 @@ export namespace Profile {
           .set({
             type: opts.type,
             balance: opts.balance,
+            credit_limit: opts.credit_limit ?? existing.credit_limit,
             currency: opts.currency ?? existing.currency,
             institution: opts.institution ?? existing.institution,
             notes: opts.notes ?? existing.notes,
@@ -184,7 +187,7 @@ export namespace Profile {
           .where(eq(AccountTable.id, existing.id))
           .run(),
       )
-      return { ...existing, ...opts, currency: opts.currency ?? existing.currency, time: { created: existing.time.created, updated: now } }
+      return { ...existing, ...opts, credit_limit: opts.credit_limit ?? existing.credit_limit, currency: opts.currency ?? existing.currency, time: { created: existing.time.created, updated: now } }
     }
 
     const id = crypto.randomUUID()
@@ -193,6 +196,7 @@ export namespace Profile {
       name: opts.name,
       type: opts.type,
       balance: opts.balance,
+      credit_limit: opts.credit_limit ?? null,
       currency: opts.currency ?? "MXN",
       institution: opts.institution ?? null,
       notes: opts.notes ?? null,
@@ -787,6 +791,7 @@ export namespace Profile {
       name: r.name,
       type: r.type as AccountType,
       balance: r.balance,
+      credit_limit: r.credit_limit ?? null,
       currency: r.currency,
       institution: r.institution ?? null,
       notes: r.notes ?? null,

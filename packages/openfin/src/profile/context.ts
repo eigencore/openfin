@@ -27,24 +27,44 @@ export function buildFinancialContext(): string {
 
   const lines: string[] = ["=== Tu perfil financiero ===", ""]
 
-  // ── Accounts ────────────────────────────────────────────────────────────────
-  if (accounts.length) {
+  const regularAccounts = accounts.filter((a) => a.type !== "credit_card")
+  const creditCards = accounts.filter((a) => a.type === "credit_card")
+
+  // ── Regular accounts ─────────────────────────────────────────────────────────
+  if (regularAccounts.length) {
     lines.push("CUENTAS")
     let totalAssets = 0
-    for (const a of accounts) {
+    for (const a of regularAccounts) {
       const label = a.institution ? `${a.name} (${a.institution})` : a.name
-      lines.push(`  ${label}: ${fmt(a.balance, a.currency)}`)
+      lines.push(`  ${label} [${a.type}]: ${fmt(a.balance, a.currency)}`)
       totalAssets += a.balance
     }
-    if (accounts.length > 1) {
-      lines.push(`  Total activos: ${fmt(totalAssets)}`)
-    }
+    if (regularAccounts.length > 1) lines.push(`  Total activos: ${fmt(totalAssets)}`)
     lines.push("")
   }
 
-  // ── Debts ────────────────────────────────────────────────────────────────────
+  // ── Credit cards ─────────────────────────────────────────────────────────────
+  if (creditCards.length) {
+    lines.push("TARJETAS DE CRÉDITO")
+    let totalOwed = 0
+    for (const a of creditCards) {
+      const label = a.institution ? `${a.name} (${a.institution})` : a.name
+      const owed = Math.abs(a.balance)
+      const parts: string[] = [`  ${label}: ${fmt(owed, a.currency)} adeudado`]
+      if (a.credit_limit) {
+        parts.push(`límite ${fmt(a.credit_limit, a.currency)}`)
+        parts.push(`disponible ${fmt(a.credit_limit - owed, a.currency)}`)
+      }
+      lines.push(parts.join(" · "))
+      totalOwed += owed
+    }
+    if (creditCards.length > 1) lines.push(`  Total adeudado: ${fmt(totalOwed)}`)
+    lines.push("")
+  }
+
+  // ── Debts (loans, mortgages) ──────────────────────────────────────────────────
   if (debts.length) {
-    lines.push("DEUDAS")
+    lines.push("DEUDAS (préstamos / hipoteca)")
     let totalDebt = 0
     for (const d of debts) {
       const parts: string[] = [`  ${d.name}: ${fmt(d.balance, d.currency)}`]
@@ -54,13 +74,16 @@ export function buildFinancialContext(): string {
       lines.push(parts.join(" · "))
       totalDebt += d.balance
     }
-    if (debts.length > 1) {
-      lines.push(`  Total deuda: ${fmt(totalDebt)}`)
-    }
+    if (debts.length > 1) lines.push(`  Total préstamos: ${fmt(totalDebt)}`)
+    lines.push("")
+  }
 
-    // Net worth
-    const totalAssets = accounts.reduce((s, a) => s + a.balance, 0)
-    const netWorth = totalAssets - totalDebt
+  // Net worth
+  if (regularAccounts.length || creditCards.length || debts.length) {
+    const totalAssets = regularAccounts.reduce((s, a) => s + a.balance, 0)
+    const totalCCOwed = creditCards.reduce((s, a) => s + Math.abs(a.balance), 0)
+    const totalDebtOwed = debts.reduce((s, d) => s + d.balance, 0)
+    const netWorth = totalAssets - totalCCOwed - totalDebtOwed
     lines.push(`  Balance neto: ${fmt(netWorth)}`)
     lines.push("")
   }

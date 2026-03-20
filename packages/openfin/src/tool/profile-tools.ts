@@ -10,26 +10,36 @@ const fmt = (n: number, currency = "MXN") =>
 
 export const UpsertAccountTool = Tool.define("upsert_account", {
   description:
-    "Create or update a bank/savings/investment account. " +
+    "Create or update an account — bank accounts, savings, investments, cash, OR credit cards. " +
+    "Credit cards use type 'credit_card' with a negative balance representing what is owed (e.g. -2500 means $2,500 owed). " +
     "If an account with the same name already exists it will be updated. " +
-    "Use this when the user mentions their account balances or opens a new account.",
+    "Use this when the user mentions their account balances, opens a new account, or registers a credit card.",
 
   parameters: z.object({
-    name: z.string().describe("Account name, e.g. 'Banamex nómina', 'BBVA ahorro'"),
+    name: z.string().describe("Account name, e.g. 'Banamex nómina', 'BBVA ahorro', 'Banamex Crédito'"),
     type: z
-      .enum(["checking", "savings", "investment", "cash", "other"])
-      .describe("Account type"),
-    balance: z.number().describe("Current balance (positive number)"),
+      .enum(["checking", "savings", "investment", "cash", "credit_card", "other"])
+      .describe("Account type. Use 'credit_card' for credit cards."),
+    balance: z
+      .number()
+      .describe(
+        "Current balance. Use NEGATIVE for credit cards (e.g. -2500 means $2,500 owed). Use positive for all other account types.",
+      ),
+    credit_limit: z.number().optional().describe("Credit limit — only for credit_card type, e.g. 50000"),
     currency: z.string().optional().describe("Currency code, default MXN"),
     institution: z.string().optional().describe("Bank or institution name"),
     notes: z.string().optional(),
   }),
 
-  async execute({ name, type, balance, currency, institution, notes }) {
-    const account = Profile.upsertAccount({ name, type, balance, currency, institution, notes })
+  async execute({ name, type, balance, credit_limit, currency, institution, notes }) {
+    const account = Profile.upsertAccount({ name, type, balance, credit_limit, currency, institution, notes })
+    const balanceLine =
+      account.type === "credit_card"
+        ? `Saldo adeudado: ${fmt(Math.abs(account.balance), account.currency)}${account.credit_limit ? ` / límite ${fmt(account.credit_limit, account.currency)}` : ""}`
+        : `Saldo: ${fmt(account.balance, account.currency)}`
     return {
       title: `Cuenta: ${name}`,
-      output: `Cuenta "${name}" guardada. Saldo: ${fmt(account.balance, account.currency)}`,
+      output: `Cuenta "${name}" guardada. ${balanceLine}`,
     }
   },
 })
@@ -38,13 +48,13 @@ export const UpsertAccountTool = Tool.define("upsert_account", {
 
 export const UpsertDebtTool = Tool.define("upsert_debt", {
   description:
-    "Create or update a debt (credit card, loan, mortgage, etc.). " +
-    "If a debt with the same name already exists it will be updated. " +
-    "Use this when the user mentions a debt balance, payment, or new loan.",
+    "Create or update a loan, mortgage, or other fixed debt. " +
+    "Do NOT use this for credit cards — credit cards are accounts (use upsert_account with type 'credit_card'). " +
+    "Use this for: personal loans, car loans, mortgages, installment plans (meses sin intereses), or any debt with fixed payments.",
 
   parameters: z.object({
-    name: z.string().describe("Debt name, e.g. 'Tarjeta Banamex', 'Crédito auto BBVA'"),
-    type: z.enum(["credit_card", "loan", "mortgage", "other"]).describe("Debt type"),
+    name: z.string().describe("Debt name, e.g. 'Crédito auto BBVA', 'Hipoteca Infonavit', 'Tele Liverpool 12 MSI'"),
+    type: z.enum(["loan", "mortgage", "other"]).describe("Debt type. Use 'loan' for personal loans, car loans, or installment plans (meses)."),
     balance: z.number().describe("Outstanding balance owed (positive number)"),
     interest_rate: z.number().optional().describe("Annual interest rate (APR) as a percentage, e.g. 19.9"),
     min_payment: z.number().optional().describe("Minimum monthly payment"),
@@ -265,9 +275,8 @@ export const AnalyzeExpensesTool = Tool.define("analyze_expenses", {
 
 export const ListAccountsTool = Tool.define("list_accounts", {
   description:
-    "List all bank/savings/investment accounts with current balances. " +
-    "Use this when the user asks about their accounts, balances, or total assets, " +
-    "or when you need fresh account data mid-conversation.",
+    "List all accounts — bank accounts, savings, investments, AND credit cards. " +
+    "Use this when the user asks about their accounts, balances, credit cards, or total assets.",
 
   parameters: z.object({}),
 
@@ -276,12 +285,33 @@ export const ListAccountsTool = Tool.define("list_accounts", {
     if (!accounts.length) {
       return { title: "Cuentas", output: "No hay cuentas registradas." }
     }
-    const total = accounts.reduce((s, a) => s + a.balance, 0)
-    const lines = accounts.map((a) => {
-      const label = a.institution ? `${a.name} (${a.institution})` : a.name
-      return `  ${label} [${a.type}]: ${fmt(a.balance, a.currency)}`
-    })
-    if (accounts.length > 1) lines.push(`  ─────\n  Total activos: ${fmt(total)}`)
+    const regular = accounts.filter((a) => a.type !== "credit_card")
+    const cards = accounts.filter((a) => a.type === "credit_card")
+    const lines: string[] = []
+
+    if (regular.length) {
+      const totalAssets = regular.reduce((s, a) => s + a.balance, 0)
+      for (const a of regular) {
+        const label = a.institution ? `${a.name} (${a.institution})` : a.name
+        lines.push(`  ${label} [${a.type}]: ${fmt(a.balance, a.currency)}`)
+      }
+      if (regular.length > 1) lines.push(`  ─────\n  Total activos: ${fmt(totalAssets)}`)
+    }
+
+    if (cards.length) {
+      if (lines.length) lines.push("")
+      lines.push("  Tarjetas de crédito:")
+      const totalOwed = cards.reduce((s, a) => s + Math.abs(a.balance), 0)
+      for (const a of cards) {
+        const label = a.institution ? `${a.name} (${a.institution})` : a.name
+        const owed = Math.abs(a.balance)
+        const limitPart = a.credit_limit ? ` / límite ${fmt(a.credit_limit, a.currency)}` : ""
+        const availPart = a.credit_limit ? ` · disponible ${fmt(a.credit_limit - owed, a.currency)}` : ""
+        lines.push(`  ${label}: ${fmt(owed, a.currency)} adeudado${limitPart}${availPart}`)
+      }
+      if (cards.length > 1) lines.push(`  ─────\n  Total adeudado en tarjetas: ${fmt(totalOwed)}`)
+    }
+
     return { title: "Cuentas", output: lines.join("\n") }
   },
 })

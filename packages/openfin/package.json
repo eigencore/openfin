@@ -1,20 +1,36 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@openfin/core",
+  "name": "openfin-ai",
   "version": "0.1.0",
+  "description": "AI-powered personal financial assistant",
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eigencore/openfin"
+  },
+  "homepage": "https://github.com/eigencore/openfin",
+  "bin": {
+    "openfin": "./bin/openfin"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "chat": "bun run src/cli/index.ts",
     "tui": "bun run src/tui/index.ts",
-    "auth": "bun run src/cli/auth.ts",
-    "auth:login": "bun run src/cli/auth.ts login",
-    "auth:logout": "bun run src/cli/auth.ts logout",
-    "auth:list": "bun run src/cli/auth.ts list",
     "telegram": "bun run src/telegram/index.ts",
-    "build": "bun build src/index.ts --outdir dist",
+    "build": "bun run script/build.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "optionalDependencies": {
+    "openfin-darwin-arm64": "0.1.0",
+    "openfin-darwin-x64": "0.1.0",
+    "openfin-linux-arm64": "0.1.0",
+    "openfin-linux-x64": "0.1.0",
+    "openfin-windows-x64": "0.1.0"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",

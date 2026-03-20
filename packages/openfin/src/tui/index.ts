@@ -19,7 +19,7 @@ try {
   const res = await fetch(`${API_BASE}/provider`, { signal: AbortSignal.timeout(3000) })
   if (!res.ok) throw new Error(`Server responded with ${res.status}`)
 } catch {
-  console.error(`\nOpenFin server is not running. Start it first:\n\n  bun run dev\n`)
+  console.error(`\nOpenFin server is not running. Start it first:\n\n  openfin\n`)
   process.exit(1)
 }
 

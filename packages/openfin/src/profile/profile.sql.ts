@@ -32,8 +32,9 @@ export const RecurringTransactionTable = sqliteTable("recurring_transaction", {
 export const AccountTable = sqliteTable("account", {
   id: text().primaryKey(),
   name: text().notNull(),
-  type: text().notNull(), // "checking" | "savings" | "investment" | "cash" | "other"
-  balance: real().notNull().default(0),
+  type: text().notNull(), // "checking" | "savings" | "investment" | "cash" | "credit_card" | "other"
+  balance: real().notNull().default(0), // negative = amount owed (credit cards)
+  credit_limit: real(),                 // only for credit_card type
   currency: text().notNull().default("MXN"),
   institution: text(),
   notes: text(),

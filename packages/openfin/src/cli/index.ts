@@ -159,7 +159,7 @@ async function main() {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`\x1b[31m[openfin] Cannot reach server at ${SERVER}: ${message}\x1b[0m`)
-    console.error(`\x1b[90m  Start the server first: bun run src/index.ts\x1b[0m`)
+    console.error(`\x1b[90m  Start the server first: openfin\x1b[0m`)
     process.exit(1)
   }
 

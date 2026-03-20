@@ -1,0 +1,59 @@
+#!/usr/bin/env node
+
+const childProcess = require("child_process")
+const fs = require("fs")
+const path = require("path")
+const os = require("os")
+
+function run(target) {
+  const result = childProcess.spawnSync(target, process.argv.slice(2), {
+    stdio: "inherit",
+  })
+  if (result.error) {
+    console.error(result.error.message)
+    process.exit(1)
+  }
+  process.exit(typeof result.status === "number" ? result.status : 0)
+}
+
+// Allow overriding the binary path (useful for development)
+const envPath = process.env.OPENFIN_BIN_PATH
+if (envPath) run(envPath)
+
+const scriptPath = fs.realpathSync(__filename)
+const scriptDir = path.dirname(scriptPath)
+
+// Check for a cached binary next to this script (set by install script)
+const cached = path.join(scriptDir, ".openfin")
+if (fs.existsSync(cached)) run(cached)
+
+const platformMap = { darwin: "darwin", linux: "linux", win32: "windows" }
+const archMap = { x64: "x64", arm64: "arm64" }
+
+const platform = platformMap[os.platform()] || os.platform()
+const arch = archMap[os.arch()] || os.arch()
+const binary = platform === "windows" ? "openfin.exe" : "openfin"
+const pkgName = `openfin-${platform}-${arch}`
+
+function findBinary(startDir) {
+  let current = startDir
+  for (;;) {
+    const candidate = path.join(current, "node_modules", pkgName, "bin", binary)
+    if (fs.existsSync(candidate)) return candidate
+    const parent = path.dirname(current)
+    if (parent === current) return undefined
+    current = parent
+  }
+}
+
+const resolved = findBinary(scriptDir)
+if (!resolved) {
+  console.error(
+    `openfin: could not find a native binary for ${platform}-${arch}.\n` +
+    `Try reinstalling: npm install -g openfin-ai\n` +
+    `Or download a binary from: https://github.com/eigencore/openfin/releases`,
+  )
+  process.exit(1)
+}
+
+run(resolved)
