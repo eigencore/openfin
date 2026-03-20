@@ -66,24 +66,25 @@ export OPENAI_API_KEY=sk-...
 
 ## Usage
 
-The `openfin` binary uses subcommands. The server must be running for all clients to work.
+The `openfin` binary uses subcommands. **The server must be running first** — all clients connect to it.
 
 ```
 openfin            # start the HTTP server (port 4096)
 openfin tui        # full-screen terminal UI
 openfin chat       # readline REPL
 openfin telegram   # Telegram bot
+openfin auth       # manage AI provider API keys
 ```
 
 **TUI (recommended)**
 ```bash
-openfin          # Terminal 1
-openfin tui      # Terminal 2
+openfin          # Terminal 1 — start the server
+openfin tui      # Terminal 2 — open the UI
 ```
 
 **CLI REPL**
 ```bash
-openfin                               # Terminal 1
+openfin                               # Terminal 1 — start the server
 openfin chat                          # Terminal 2
 openfin chat --session <id>           # resume a session
 openfin chat --model openai:gpt-4o    # pick a model
@@ -91,9 +92,9 @@ openfin chat --model openai:gpt-4o    # pick a model
 
 **Telegram**
 ```bash
-openfin telegram login           # paste your token from @BotFather
-openfin                          # Terminal 1
-openfin telegram                 # Terminal 2
+openfin telegram login           # one-time setup: paste your token from @BotFather
+openfin                          # Terminal 1 — start the server
+openfin telegram                 # Terminal 2 — start the bot
 ```
 
 Each Telegram user gets an isolated session. TUI and Telegram can run simultaneously against the same server.

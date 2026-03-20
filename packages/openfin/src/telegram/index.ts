@@ -18,6 +18,13 @@ import { Auth } from "../auth/index"
 
 const subcommand = process.argv[3]
 
+if (subcommand !== undefined && subcommand !== "login") {
+  console.log(`Usage:
+  openfin telegram         Start the Telegram bot
+  openfin telegram login   Save your bot token from @BotFather`)
+  process.exit(0)
+}
+
 if (subcommand === "login") {
   prompts.intro("Save Telegram bot token")
 
