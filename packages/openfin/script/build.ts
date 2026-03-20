@@ -8,19 +8,21 @@
  *   bun run script/build.ts --single     # build only current platform
  */
 
+import { $ } from "bun"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
-import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+import solidPlugin from "@opentui/solid/bun-plugin"
+import pkg from "../package.json"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dir = path.resolve(__dirname, "..")
 process.chdir(dir)
 
-const version = process.env.OPENFIN_VERSION || (await import("../package.json")).version
+const version = process.env.OPENFIN_VERSION || pkg.version
 const singleFlag = process.argv.includes("--single")
 
-const targets = [
+const allTargets = [
   { os: "darwin", arch: "arm64" },
   { os: "darwin", arch: "x64" },
   { os: "linux", arch: "arm64" },
@@ -28,12 +30,9 @@ const targets = [
   { os: "win32", arch: "x64" },
 ] as const
 
-const currentOs = process.platform
-const currentArch = process.arch
-
-const activeTargets = singleFlag
-  ? targets.filter((t) => t.os === currentOs && t.arch === currentArch)
-  : targets
+const targets = singleFlag
+  ? allTargets.filter((t) => t.os === process.platform && t.arch === process.arch)
+  : allTargets
 
 // Load migrations and embed them into the binary
 const migrationDir = path.join(dir, "migration")
@@ -58,58 +57,44 @@ if (fs.existsSync(migrationDir)) {
   }
 }
 
-console.log(`Building openfin v${version} — ${activeTargets.length} target(s)`)
+console.log(`Building openfin v${version} — ${targets.length} target(s)`)
 console.log(`Loaded ${migrations.length} migration(s)\n`)
 
-fs.mkdirSync("dist", { recursive: true })
+await $`rm -rf dist`
 
-for (const { os, arch } of activeTargets) {
+// Install @opentui/core for all platforms so cross-compilation works
+if (!singleFlag) {
+  await $`bun install --os="*" --cpu="*" @opentui/core@${pkg.dependencies["@opentui/core"]}`
+}
+
+for (const { os, arch } of targets) {
   const pkgName = `openfin-${os === "win32" ? "windows" : os}-${arch}`
   const binary = os === "win32" ? "openfin.exe" : "openfin"
   const outDir = path.join("dist", pkgName, "bin")
-  const outFile = path.join(outDir, binary)
 
-  fs.mkdirSync(outDir, { recursive: true })
+  await $`mkdir -p ${outDir}`
 
-  // Map to bun's target string
-  const bunOs = os === "win32" ? "windows" : os
-  const target = `bun-${bunOs}-${arch}`
+  const bunTarget = `bun-${os === "win32" ? "windows" : os}-${arch}`
 
   console.log(`  → ${pkgName}`)
 
-  // Bun 1.3.x ignores `outfile` when `compile` is set — use `outdir` + rename instead
-  const tmpDir = path.join(dir, "dist", `_tmp_${pkgName}`)
-  fs.mkdirSync(tmpDir, { recursive: true })
-
   const result = await Bun.build({
     entrypoints: [path.join(dir, "src/index.ts")],
-    compile: target as Bun.Build.CompileTarget,
-    outdir: tmpDir,
+    plugins: [solidPlugin],
     define: {
       OPENFIN_VERSION: `"${version}"`,
       "process.env.NODE_ENV": '"production"',
     },
-    plugins: [createSolidTransformPlugin()],
+    compile: {
+      target: bunTarget as any,
+      outfile: path.join(dir, outDir, binary),
+    } as any,
   })
 
   if (!result.success) {
     for (const log of result.logs) console.error(log)
     process.exit(1)
   }
-
-  // Rename the bun-generated binary to the correct name.
-  // Bun names the output after the entrypoint filename (index) or its parent dir (src),
-  // and appends .exe on Windows.
-  const ext = os === "win32" ? ".exe" : ""
-  const candidates = ["index", "src"].map((n) => path.join(tmpDir, n + ext))
-  const actualOutput = candidates.find((p) => fs.existsSync(p))
-  if (!actualOutput) {
-    const found = fs.readdirSync(tmpDir)
-    console.error(`Build output not found in ${tmpDir}. Contents: ${found.join(", ")}`)
-    process.exit(1)
-  }
-  fs.renameSync(actualOutput, path.join(dir, outFile))
-  fs.rmSync(tmpDir, { recursive: true, force: true })
 
   // Write platform package.json for npm publish
   const pkgJson = {

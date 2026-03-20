@@ -16,21 +16,7 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            name: linux-x64
-          - os: ubuntu-22.04-arm
-            name: linux-arm64
-          - os: macos-latest
-            name: darwin-arm64
-          - os: macos-13
-            name: darwin-x64
-          - os: windows-latest
-            name: windows-x64
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +31,6 @@ jobs:
 
       - name: Set version
         id: version
-        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
@@ -57,13 +42,13 @@ jobs:
 
       - name: Build
         working-directory: packages/openfin
-        run: bun run script/build.ts --single
+        run: bun run script/build.ts
         env:
           OPENFIN_VERSION: ${{ env.VERSION }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: openfin-${{ matrix.name }}
+          name: openfin-dist
           path: packages/openfin/dist
 
     outputs:
@@ -90,8 +75,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: openfin-*
-          merge-multiple: true
+          name: openfin-dist
           path: packages/openfin/dist
 
       - name: Publish
