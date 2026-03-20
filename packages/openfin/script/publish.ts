@@ -47,7 +47,9 @@ for (const pkg of platforms) {
   await $`npm publish --access public`.cwd(pkgDir)
 }
 
-// ── 2. Publish main openfin-ai package ────────────────────────────────────
+// ── 2. Publish main @eigencore/openfin package ────────────────────────────
+// Stamp the version from OPENFIN_VERSION into package.json before publishing
+await $`npm version ${version} --no-git-tag-version --allow-same-version`
 console.log("\nPublishing @eigencore/openfin to npm...")
 await $`npm publish . --access public`
 
