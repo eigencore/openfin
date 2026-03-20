@@ -9,6 +9,7 @@ import { Log } from "../util/log"
 import { SessionRoutes } from "./routes/session"
 import { ProviderRoutes } from "./routes/provider"
 import { ProfileRoutes } from "./routes/profile"
+import { CmdRoutes } from "./routes/cmd"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 
 const log = Log.create({ service: "server" })
@@ -268,6 +269,7 @@ export namespace Server {
       .route("/session", SessionRoutes())
       .route("/provider", ProviderRoutes())
       .route("/profile", ProfileRoutes())
+      .route("/cmd", CmdRoutes())
 
       // ── Web dashboard ─────────────────────────────────────────────────────
       .get("/dashboard", (c) => {

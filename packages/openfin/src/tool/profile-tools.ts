@@ -415,9 +415,11 @@ export const ListTransactionsTool = Tool.define("list_transactions", {
   }),
 
   async execute({ period, type, category, account_name, limit }) {
+    const accounts = Profile.listAccounts()
+    const accountById = new Map(accounts.map((a) => [a.id, a.name]))
+
     let account_id: string | undefined
     if (account_name) {
-      const accounts = Profile.listAccounts()
       const found = accounts.find((a) => a.name.toLowerCase() === account_name.toLowerCase())
       account_id = found?.id
     }
@@ -437,7 +439,8 @@ export const ListTransactionsTool = Tool.define("list_transactions", {
     const lines = txs.map((tx) => {
       const dateStr = new Date(tx.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })
       const dir = tx.type === "expense" ? "↓" : "↑"
-      return `  ${dateStr} ${dir} ${fmt(tx.amount, tx.currency)} · ${tx.category} — ${tx.description}`
+      const accountSuffix = tx.account_id ? ` [${accountById.get(tx.account_id) ?? tx.account_id}]` : ""
+      return `  ${tx.id} | ${dateStr} ${dir} ${fmt(tx.amount, tx.currency)} · ${tx.category} — ${tx.description}${accountSuffix}`
     })
 
     return { title: `Transactions (${txs.length})`, output: lines.join("\n") }
@@ -932,6 +935,33 @@ export const DeleteRecurringTool = Tool.define("delete_recurring", {
   },
 })
 
+// ── delete_transaction ────────────────────────────────────────────────────────
+
+export const DeleteTransactionTool = Tool.define("delete_transaction", {
+  description:
+    "Permanently delete a transaction by its ID. " +
+    "If the transaction was linked to an account, the account balance is automatically reverted. " +
+    "Use list_transactions first to find the transaction ID.",
+
+  parameters: z.object({
+    id: z.string().describe("Transaction ID to delete"),
+  }),
+
+  async execute({ id }) {
+    const result = Profile.deleteTransaction(id)
+    if (!result.found) {
+      return { title: "Not found", output: `No transaction found with ID "${id}".` }
+    }
+
+    const balanceLine =
+      result.revertedAccountBalance !== undefined
+        ? `\nAccount balance reverted to ${fmt(result.revertedAccountBalance, "MXN")}.`
+        : ""
+
+    return { title: "Transaction deleted", output: `Transaction "${id}" deleted.${balanceLine}` }
+  },
+})
+
 export const ProfileTools = [
   UpsertAccountTool,
   UpsertDebtTool,
@@ -944,6 +974,7 @@ export const ProfileTools = [
   ListBudgetsTool,
   ListGoalsTool,
   ListTransactionsTool,
+  DeleteTransactionTool,
   PayDebtTool,
   ContributeToGoalTool,
   TransferBetweenAccountsTool,

@@ -104,6 +104,40 @@ async function* streamMessage(
   }
 }
 
+// ── Command helpers ───────────────────────────────────────────────────────────
+
+function parseCommand(input: string): { command: string; args: string[] } | null {
+  if (!input.startsWith("/")) return null
+  const parts = input.slice(1).trim().split(/\s+/)
+  const command = parts[0]!.toLowerCase()
+  const args = parts.slice(1)
+  return { command, args }
+}
+
+async function runCommand(command: string, args: string[]): Promise<void> {
+  if (command === "exit" || command === "quit") return // handled in loop
+
+  try {
+    const res = await fetch(`${SERVER}/cmd`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command, args }),
+    })
+
+    const data = (await res.json()) as { output?: string; error?: string }
+
+    if (!res.ok || data.error) {
+      process.stdout.write(`\x1b[31m[error] ${data.error ?? "Unknown error"}\x1b[0m\n`)
+      return
+    }
+
+    process.stdout.write(`\n${data.output}\n`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    process.stdout.write(`\x1b[31m[error] ${message}\x1b[0m\n`)
+  }
+}
+
 // ── REPL ─────────────────────────────────────────────────────────────────────
 
 async function repl(sessionId: string, model?: string) {
@@ -115,13 +149,13 @@ async function repl(sessionId: string, model?: string) {
 
   const prompt = () =>
     new Promise<string | null>((resolve) => {
-      rl.question("\n\x1b[36mYou:\x1b[0m ", (input) => {
+      rl.question("\n\x1b[36m❯\x1b[0m ", (input) => {
         resolve(input)
       })
       rl.once("close", () => resolve(null))
     })
 
-  console.log("\x1b[90m  Type your message and press Enter. Ctrl+C or Ctrl+D to exit.\x1b[0m")
+  console.log("\x1b[90m  Chat with the assistant or type /help for available commands.\x1b[0m")
 
   while (true) {
     const input = await prompt()
@@ -130,6 +164,13 @@ async function repl(sessionId: string, model?: string) {
     const trimmed = input.trim()
     if (!trimmed) continue
     if (trimmed === "/exit" || trimmed === "/quit") break
+
+    const cmd = parseCommand(trimmed)
+
+    if (cmd) {
+      await runCommand(cmd.command, cmd.args)
+      continue
+    }
 
     process.stdout.write("\n\x1b[32mAssistant:\x1b[0m ")
 

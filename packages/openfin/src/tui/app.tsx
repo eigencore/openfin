@@ -3,12 +3,13 @@ import { useRoute, RouteProvider } from "./context/route"
 import { ExitProvider, useExit } from "./context/exit"
 import { KVProvider } from "./context/kv"
 import { ThemeProvider, useTheme } from "./context/theme"
-import { SDKProvider } from "./context/sdk"
+import { SDKProvider, api } from "./context/sdk"
 import { SyncProvider, useSync } from "./context/sync"
 import { ToastProvider, ToastList, useToast } from "./ui/toast"
 import { DialogProvider, DialogOverlay, useDialog } from "./ui/dialog"
 import { DialogSelect } from "./ui/dialog-select"
 import { DialogPrompt } from "./ui/dialog-prompt"
+import { DialogOutput } from "./ui/dialog-output"
 import { CommandProvider, useCommandRegistry, useCommandPalette } from "./component/command"
 import { PromptHistoryProvider } from "./context/prompt-history"
 import { ModelsProvider } from "./context/models"
@@ -78,6 +79,20 @@ function Commands() {
     })
   }
 
+  function showCmdResult(title: string, output: string) {
+    const plain = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    const lines = plain.split("\n")
+    dialog.replace({
+      component: () => <DialogOutput title={title} lines={lines} />,
+    })
+  }
+
+  function runCmd(command: string, args: string[] = []) {
+    api.runCmd(command, args).then((output) => showCmdResult(command, output)).catch((err) => {
+      toast.show(err instanceof Error ? err.message : String(err), "error")
+    })
+  }
+
   onMount(() => {
     registry.register({
       id: "new",
@@ -130,8 +145,7 @@ function Commands() {
       description: "View your accounts",
       slash: "accounts",
       category: "Finance",
-      action: () =>
-        newSession("Accounts overview", "Show me a summary of all my accounts and balances."),
+      action: () => runCmd("accounts"),
     })
 
     registry.register({
@@ -140,8 +154,7 @@ function Commands() {
       description: "Review spending budgets",
       slash: "budgets",
       category: "Finance",
-      action: () =>
-        newSession("Budgets overview", "Show me all my budgets and how I'm tracking against them."),
+      action: () => runCmd("budgets"),
     })
 
     registry.register({
@@ -150,8 +163,7 @@ function Commands() {
       description: "Track your goals",
       slash: "goals",
       category: "Finance",
-      action: () =>
-        newSession("Goals overview", "Show me all my financial goals and progress toward each."),
+      action: () => runCmd("goals"),
     })
 
     registry.register({
@@ -160,24 +172,52 @@ function Commands() {
       description: "View your debts",
       slash: "debts",
       category: "Finance",
-      action: () =>
-        newSession(
-          "Debts overview",
-          "Show me all my debts, interest rates, and minimum payments.",
-        ),
+      action: () => runCmd("debts"),
     })
 
     registry.register({
       id: "expenses",
       title: "Expenses",
-      description: "Analyze spending",
+      description: "Analyze spending this month",
       slash: "expenses",
       category: "Finance",
-      action: () =>
-        newSession(
-          "Expense analysis",
-          "Analyze my expenses for this month by category.",
-        ),
+      action: () => runCmd("spending"),
+    })
+
+    registry.register({
+      id: "networth",
+      title: "Net Worth",
+      description: "Net worth summary",
+      slash: "networth",
+      category: "Finance",
+      action: () => runCmd("networth"),
+    })
+
+    registry.register({
+      id: "recurring",
+      title: "Recurring",
+      description: "View recurring transactions",
+      slash: "recurring",
+      category: "Finance",
+      action: () => runCmd("recurring"),
+    })
+
+    registry.register({
+      id: "alerts",
+      title: "Alerts",
+      description: "View active financial alerts",
+      slash: "alerts",
+      category: "Finance",
+      action: () => runCmd("alerts"),
+    })
+
+    registry.register({
+      id: "txs",
+      title: "Transactions",
+      description: "List recent transactions",
+      slash: "txs",
+      category: "Finance",
+      action: () => runCmd("txs"),
     })
 
     registry.register({

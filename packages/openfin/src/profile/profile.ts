@@ -555,6 +555,34 @@ export namespace Profile {
     return { transaction: toTransaction(row), newAccountBalance }
   }
 
+  export function deleteTransaction(id: string): { found: boolean; revertedAccountBalance?: number } {
+    const now = Date.now()
+
+    return Database.use((db) => {
+      const tx = db.select().from(TransactionTable).where(eq(TransactionTable.id, id)).limit(1).get()
+      if (!tx) return { found: false }
+
+      db.delete(TransactionTable).where(eq(TransactionTable.id, id)).run()
+
+      let revertedAccountBalance: number | undefined
+      if (tx.account_id) {
+        const account = db.select().from(AccountTable).where(eq(AccountTable.id, tx.account_id)).limit(1).get()
+        if (account) {
+          // Reverse the original delta: expense added negative, income added positive
+          const delta = tx.type === "expense" ? tx.amount : -tx.amount
+          revertedAccountBalance = account.balance + delta
+          db
+            .update(AccountTable)
+            .set({ balance: revertedAccountBalance, time_updated: now })
+            .where(eq(AccountTable.id, tx.account_id))
+            .run()
+        }
+      }
+
+      return { found: true, revertedAccountBalance }
+    })
+  }
+
   export function listTransactions(opts: {
     period?: "this_month" | "last_month" | "last_30_days" | "this_year"
     type?: TransactionType

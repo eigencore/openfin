@@ -147,6 +147,18 @@ async function newSession(chatId: number): Promise<string> {
   return session.id
 }
 
+// ── Direct command helper ─────────────────────────────────────────────────────
+
+async function runCmd(ctx: { reply: (text: string) => Promise<any> }, command: string, args: string[] = []) {
+  try {
+    const output = await api.runCmd(command, args)
+    const plain = output.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+    await ctx.reply(plain || "Done.")
+  } catch (err) {
+    await ctx.reply(`❌ ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 // ── Bot setup ─────────────────────────────────────────────────────────────────
 
 export function createBot(token: string): Bot {
@@ -177,21 +189,36 @@ export function createBot(token: string): Bot {
   })
 
   // /accounts
-  bot.command("accounts", async (ctx) => {
-    const sessionId = await getOrCreateSession(ctx.chat.id)
-    await sendMessage(bot, ctx.chat.id, sessionId, "Show me all my accounts and their current balances.")
-  })
+  bot.command("accounts", async (ctx) => { await runCmd(ctx, "accounts") })
+
+  // /debts
+  bot.command("debts", async (ctx) => { await runCmd(ctx, "debts") })
 
   // /budgets
-  bot.command("budgets", async (ctx) => {
-    const sessionId = await getOrCreateSession(ctx.chat.id)
-    await sendMessage(bot, ctx.chat.id, sessionId, "Show me my current budgets and spending.")
-  })
+  bot.command("budgets", async (ctx) => { await runCmd(ctx, "budgets") })
 
   // /goals
-  bot.command("goals", async (ctx) => {
-    const sessionId = await getOrCreateSession(ctx.chat.id)
-    await sendMessage(bot, ctx.chat.id, sessionId, "Show me my financial goals and progress.")
+  bot.command("goals", async (ctx) => { await runCmd(ctx, "goals") })
+
+  // /recurring
+  bot.command("recurring", async (ctx) => { await runCmd(ctx, "recurring") })
+
+  // /networth
+  bot.command("networth", async (ctx) => { await runCmd(ctx, "networth") })
+
+  // /alerts
+  bot.command("alerts", async (ctx) => { await runCmd(ctx, "alerts") })
+
+  // /spending [period]
+  bot.command("spending", async (ctx) => {
+    const args = ctx.message?.text.split(/\s+/).slice(1) ?? []
+    await runCmd(ctx, "spending", args)
+  })
+
+  // /txs [period] [income|expense] [category] [@account]
+  bot.command("txs", async (ctx) => {
+    const args = ctx.message?.text.split(/\s+/).slice(1) ?? []
+    await runCmd(ctx, "txs", args)
   })
 
   // /model — inline keyboard
@@ -246,14 +273,23 @@ export function createBot(token: string): Bot {
   bot.command("help", async (ctx) => {
     await ctx.reply(
       `*OpenFin — Commands*\n\n` +
+        `*Finance (instant)*\n` +
+        `/accounts — Accounts & balances\n` +
+        `/debts — Debts summary\n` +
+        `/budgets — Budgets & spending\n` +
+        `/goals — Savings goals\n` +
+        `/recurring — Recurring transactions\n` +
+        `/networth — Net worth summary\n` +
+        `/alerts — Active alerts\n` +
+        `/spending [period] — Expense breakdown\n` +
+        `/txs [period] [type] [cat] — Transactions\n` +
+        `\n*Session*\n` +
         `/new — New conversation\n` +
-        `/accounts — View accounts\n` +
-        `/budgets — View budgets\n` +
-        `/goals — View goals\n` +
         `/model — Change AI model\n` +
         `/history — Previous sessions\n` +
         `/abort — Cancel current response\n` +
-        `/help — This help`,
+        `/help — This help\n` +
+        `\nPeriods: this\\_month · last\\_month · last\\_30\\_days · this\\_year`,
       { parse_mode: "Markdown" },
     )
   })

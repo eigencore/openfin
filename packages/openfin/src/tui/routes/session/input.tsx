@@ -10,6 +10,7 @@ import { useModel } from "../../component/dialog-model"
 import { Spinner } from "../../component/spinner"
 import { useModels } from "../../context/models"
 import { readClipboardImage, type ClipboardImage } from "../../util/clipboard"
+import { useDialog } from "../../ui/dialog"
 
 interface SessionInputProps {
   sessionID: string
@@ -18,6 +19,7 @@ interface SessionInputProps {
 export function SessionInput(props: SessionInputProps) {
   const { theme } = useTheme()
   const sync = useSync()
+  const dialog = useDialog()
   const { handleSlashInput, show: showPalette } = useCommandPalette()
   const registry = useCommandRegistry()
   const [selectedModel] = useModel()
@@ -58,6 +60,14 @@ export function SessionInput(props: SessionInputProps) {
   createEffect(() => {
     slashQuery()
     setSelectedIdx(0)
+  })
+
+  createEffect(() => {
+    if (dialog.isOpen()) {
+      input?.blur()
+    } else {
+      input?.focus()
+    }
   })
 
   useKeyboard((key) => {

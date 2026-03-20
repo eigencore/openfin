@@ -114,6 +114,17 @@ export const api = {
     await fetch(`${API_BASE}/session/${sessionId}/abort`, { method: "POST" })
   },
 
+  async runCmd(command: string, args: string[] = []): Promise<string> {
+    const res = await fetch(`${API_BASE}/cmd`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command, args }),
+    })
+    const data = (await res.json()) as { output?: string; error?: string }
+    if (!res.ok || data.error) throw new Error(data.error ?? "Command failed")
+    return data.output ?? ""
+  },
+
   async sendMessage(
     sessionId: string,
     content: string,
