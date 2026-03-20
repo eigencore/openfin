@@ -44,7 +44,7 @@ for (const pkg of platforms) {
     continue
   }
   console.log(`  → ${pkg}`)
-  await $`npm publish ${pkgDir} --access public`
+  await $`npm publish --access public`.cwd(pkgDir)
 }
 
 // ── 2. Publish main openfin-ai package ────────────────────────────────────
