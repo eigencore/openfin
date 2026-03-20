@@ -14,8 +14,7 @@
     "openfin": "./bin/openfin"
   },
   "files": [
-    "bin",
-    "dist"
+    "bin"
   ],
   "scripts": {
     "dev": "bun run src/index.ts",
