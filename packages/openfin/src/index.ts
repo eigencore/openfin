@@ -20,7 +20,7 @@ switch (subcommand) {
 
   default:
     console.error(`Unknown subcommand: ${subcommand}`)
-    console.error(`Usage: openfin [server|chat|telegram]`)
+    console.error(`Usage: openfin [server|tui|chat|telegram]`)
     process.exit(1)
 }
 
