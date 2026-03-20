@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "openfin-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-powered personal financial assistant",
   "type": "module",
   "license": "MIT",
@@ -25,11 +25,11 @@
     "typecheck": "tsc --noEmit"
   },
   "optionalDependencies": {
-    "openfin-darwin-arm64": "0.1.0",
-    "openfin-darwin-x64": "0.1.0",
-    "openfin-linux-arm64": "0.1.0",
-    "openfin-linux-x64": "0.1.0",
-    "openfin-windows-x64": "0.1.0"
+    "openfin-darwin-arm64": "0.1.1",
+    "openfin-darwin-x64": "0.1.1",
+    "openfin-linux-arm64": "0.1.1",
+    "openfin-linux-x64": "0.1.1",
+    "openfin-windows-x64": "0.1.1"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
