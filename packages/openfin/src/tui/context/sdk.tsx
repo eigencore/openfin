@@ -42,10 +42,12 @@ export interface DashboardData {
   netWorth: { assets: number; debts: number; net_worth: number; currency: string; delta?: number }
   netWorthHistory: { date: number; value: number }[]
   topExpenses: { category: string; amount: number }[]
-  accounts: { name: string; type: string; balance: number; currency: string; institution: string | null }[]
-  debts: { name: string; type: string; balance: number; currency: string; due_day: number | null }[]
+  income: { amount: number; currency: string; notes: string | null } | null
+  upcoming: { title: string; amount: number; type: string; category: string; currency: string; next_due: number }[]
+  accounts: { name: string; type: string; balance: number; currency: string; institution: string | null; credit_limit: number | null }[]
+  debts: { name: string; type: string; balance: number; currency: string; due_day: number | null; interest_rate: number | null; min_payment: number | null }[]
   budgets: { category: string; amount: number; spent: number; currency: string; period: string }[]
-  goals: { name: string; target_amount: number; current_amount: number; currency: string; target_date: number | null }[]
+  goals: { name: string; target_amount: number; current_amount: number; currency: string; target_date: number | null; time_created: number }[]
   alerts: { type: string; severity: "warning" | "critical"; message: string }[]
 }
 

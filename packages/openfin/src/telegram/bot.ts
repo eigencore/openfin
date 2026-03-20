@@ -95,6 +95,59 @@ export function startSSEListener(bot: Bot) {
 }
 
 async function handleSSEEvent(bot: Bot, event: { type: string; properties: any }) {
+  if (event.type === "profile.budget.exceeded") {
+    const { category, used, limit, percent, currency } = event.properties
+    const fmtAmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+    const chats = await SessionMap.listChats()
+    for (const chatId of chats) {
+      try {
+        await bot.api.sendMessage(
+          chatId,
+          `🔴 *Budget exceeded — ${category}*\n\nSpent: ${fmtAmt(used)} / ${fmtAmt(limit)} (${percent}%)\n\nYou've gone over your ${category} budget this month.`,
+          { parse_mode: "Markdown" },
+        )
+      } catch {}
+    }
+    return
+  }
+
+  if (event.type === "profile.goal.reached") {
+    const { name, amount, currency } = event.properties
+    const fmtAmt = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+    const chats = await SessionMap.listChats()
+    for (const chatId of chats) {
+      try {
+        await bot.api.sendMessage(
+          chatId,
+          `🎉 *Goal reached — ${name}*\n\nYou've saved ${fmtAmt(amount)} and hit your target. Congratulations!`,
+          { parse_mode: "Markdown" },
+        )
+      } catch {}
+    }
+    return
+  }
+
+  if (event.type === "recurring.auto_logged") {
+    const { items } = event.properties as { items: { title: string; amount: number; type: string; category: string; currency: string }[] }
+    const fmtAmt = (n: number, currency: string) =>
+      `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+    const lines = items.map((item) => {
+      const sign = item.type === "expense" ? "💸" : "💰"
+      return `${sign} ${item.title} — ${fmtAmt(item.amount, item.currency)} (${item.category})`
+    })
+    const chats = await SessionMap.listChats()
+    for (const chatId of chats) {
+      try {
+        await bot.api.sendMessage(
+          chatId,
+          `🔄 *Recurring transactions logged*\n\n${lines.join("\n")}`,
+          { parse_mode: "Markdown" },
+        )
+      } catch {}
+    }
+    return
+  }
+
   if (event.type === "message.part.updated") {
     const { sessionID, part } = event.properties
     const stream = activeStreams.get(sessionID)

@@ -3,7 +3,8 @@ import { createSimpleContext } from "./helper"
 
 export type HomeRoute = { type: "home" }
 export type SessionRoute = { type: "session"; sessionID: string; initialPrompt?: string }
-export type Route = HomeRoute | SessionRoute
+export type DashboardRoute = { type: "dashboard" }
+export type Route = HomeRoute | SessionRoute | DashboardRoute
 
 export const { use: useRoute, provider: RouteProvider } = createSimpleContext({
   name: "Route",

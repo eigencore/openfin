@@ -25,6 +25,41 @@ export namespace Bus {
     }),
   )
 
+  export const BudgetAlert = BusEvent.define(
+    "profile.budget.exceeded",
+    z.object({
+      category: z.string(),
+      used: z.number(),
+      limit: z.number(),
+      percent: z.number(),
+      currency: z.string(),
+    }),
+  )
+
+  export const GoalReached = BusEvent.define(
+    "profile.goal.reached",
+    z.object({
+      name: z.string(),
+      amount: z.number(),
+      currency: z.string(),
+    }),
+  )
+
+  export const RecurringAutoLogged = BusEvent.define(
+    "recurring.auto_logged",
+    z.object({
+      items: z.array(
+        z.object({
+          title: z.string(),
+          amount: z.number(),
+          type: z.enum(["income", "expense"]),
+          category: z.string(),
+          currency: z.string(),
+        }),
+      ),
+    }),
+  )
+
   // ── Pub/Sub ───────────────────────────────────────────────────────────────
 
   export async function publish<Definition extends BusEvent.Definition>(

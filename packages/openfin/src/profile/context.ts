@@ -27,6 +27,25 @@ export function buildFinancialContext(): string {
 
   const lines: string[] = ["=== Financial Profile ===", ""]
 
+  // ── Monthly income ────────────────────────────────────────────────────────────
+  const income = Profile.getIncome()
+  if (income) {
+    lines.push(`MONTHLY INCOME: ${fmt(income.amount, income.currency)}${income.notes ? ` (${income.notes})` : ""}`)
+    lines.push("")
+  }
+
+  // ── Upcoming bills (next 7 days) ─────────────────────────────────────────────
+  const upcoming = Profile.upcomingRecurring(7)
+  if (upcoming.length) {
+    lines.push("UPCOMING (next 7 days)")
+    for (const r of upcoming) {
+      const dueDate = new Date(r.next_due).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+      const sign = r.type === "expense" ? "-" : "+"
+      lines.push(`  ${dueDate}: ${sign}${fmt(r.amount, r.currency)} — ${r.title} (${r.category})`)
+    }
+    lines.push("")
+  }
+
   const regularAccounts = accounts.filter((a) => a.type !== "credit_card")
   const creditCards = accounts.filter((a) => a.type === "credit_card")
 
@@ -90,18 +109,34 @@ export function buildFinancialContext(): string {
 
   // ── Budgets + actual spending ─────────────────────────────────────────────
   if (budgets.length) {
-    const now = new Date()
-    const monthName = now.toLocaleString("en-US", { month: "long", year: "numeric" })
+    const nowDate = new Date()
+    const monthName = nowDate.toLocaleString("en-US", { month: "long", year: "numeric" })
     lines.push(`BUDGET — ${monthName}`)
 
     const spent = Profile.currentMonthExpensesByCategory()
+
+    // Day of month for velocity calculation
+    const dayOfMonth = nowDate.getDate()
+    const daysInMonth = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0).getDate()
 
     for (const b of budgets) {
       const usedAmount = spent.get(b.category.toLowerCase()) ?? 0
       const ratio = usedAmount / b.amount
       const emoji = statusEmoji(ratio)
+
+      // Spending velocity: project end-of-month total based on daily burn
+      let velocityPart = ""
+      if (usedAmount > 0 && ratio < 1 && dayOfMonth > 3) {
+        const dailyBurn = usedAmount / dayOfMonth
+        const projectedEOM = dailyBurn * daysInMonth
+        if (projectedEOM > b.amount) {
+          const exhaustDay = Math.ceil(b.amount / dailyBurn)
+          velocityPart = ` | ⚡ at this rate exhausted by day ${exhaustDay}`
+        }
+      }
+
       lines.push(
-        `  ${emoji} ${b.category}: ${fmt(usedAmount, b.currency)} / ${fmt(b.amount, b.currency)} (${pct(usedAmount, b.amount)})`,
+        `  ${emoji} ${b.category}: ${fmt(usedAmount, b.currency)} / ${fmt(b.amount, b.currency)} (${pct(usedAmount, b.amount)})${velocityPart}`,
       )
     }
 
@@ -118,15 +153,37 @@ export function buildFinancialContext(): string {
 
   // ── Goals ────────────────────────────────────────────────────────────────────
   if (goals.length) {
+    const now = Date.now()
     lines.push("GOALS")
     for (const g of goals) {
       const ratio = g.current_amount / g.target_amount
       const emoji = ratio >= 1 ? "✅" : "🎯"
+      const remaining = g.target_amount - g.current_amount
+
+      let pacePart = ""
+      if (g.target_date && ratio < 1) {
+        const monthsLeft = Math.max(
+          1,
+          Math.round((g.target_date - now) / (30.44 * 24 * 60 * 60 * 1000)),
+        )
+        const monthsElapsed = Math.max(
+          1,
+          Math.round((now - g.time_created) / (30.44 * 24 * 60 * 60 * 1000)),
+        )
+        const requiredMonthly = remaining / monthsLeft
+        const actualMonthly = g.current_amount / monthsElapsed
+        const onTrack = actualMonthly >= requiredMonthly * 0.9
+        const trackEmoji = onTrack ? "✅" : "⚠️"
+        pacePart = ` | ${trackEmoji} needs ${fmt(requiredMonthly, g.currency)}/mo (${monthsLeft} mo left)`
+      } else if (g.target_date && ratio >= 1) {
+        pacePart = " | reached"
+      }
+
       const datePart = g.target_date
         ? ` → ${new Date(g.target_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
         : ""
       lines.push(
-        `  ${emoji} ${g.name}: ${fmt(g.current_amount, g.currency)} / ${fmt(g.target_amount, g.currency)} (${pct(g.current_amount, g.target_amount)})${datePart}`,
+        `  ${emoji} ${g.name}: ${fmt(g.current_amount, g.currency)} / ${fmt(g.target_amount, g.currency)} (${pct(g.current_amount, g.target_amount)})${datePart}${pacePart}`,
       )
     }
     lines.push("")

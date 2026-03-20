@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, Show, Switch, Match } from "solid-js"
+import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useModels } from "../../context/models"
@@ -285,6 +286,7 @@ function ErrorBubble(props: { message: string }) {
 function ToolPartRow(props: { part: Message.ToolPart }) {
   return (
     <Switch fallback={<GenericTool part={props.part} />}>
+      {/* ── Mutation tools ── */}
       <Match when={props.part.tool === "upsert_account"}>
         <AccountTool part={props.part} />
       </Match>
@@ -300,11 +302,81 @@ function ToolPartRow(props: { part: Message.ToolPart }) {
       <Match when={props.part.tool === "log_transaction"}>
         <TransactionTool part={props.part} />
       </Match>
+      <Match when={props.part.tool === "pay_debt"}>
+        <LabeledTool part={props.part} pendingLabel="Paying debt..." />
+      </Match>
+      <Match when={props.part.tool === "contribute_to_goal"}>
+        <LabeledTool part={props.part} pendingLabel="Contributing to goal..." />
+      </Match>
+      <Match when={props.part.tool === "transfer_between_accounts"}>
+        <LabeledTool part={props.part} pendingLabel="Transferring funds..." />
+      </Match>
+      <Match when={props.part.tool === "delete_account"}>
+        <LabeledTool part={props.part} pendingLabel="Deleting account..." />
+      </Match>
+      <Match when={props.part.tool === "delete_debt"}>
+        <LabeledTool part={props.part} pendingLabel="Deleting debt..." />
+      </Match>
+      <Match when={props.part.tool === "delete_budget"}>
+        <LabeledTool part={props.part} pendingLabel="Deleting budget..." />
+      </Match>
+      <Match when={props.part.tool === "delete_goal"}>
+        <LabeledTool part={props.part} pendingLabel="Deleting goal..." />
+      </Match>
+      <Match when={props.part.tool === "delete_transaction"}>
+        <LabeledTool part={props.part} pendingLabel="Deleting transaction..." />
+      </Match>
+      {/* ── Analysis tools ── */}
       <Match when={props.part.tool === "analyze_expenses"}>
         <AnalyzeTool part={props.part} />
       </Match>
+      <Match when={props.part.tool === "check_alerts"}>
+        <LabeledTool part={props.part} pendingLabel="Checking alerts..." />
+      </Match>
+      <Match when={props.part.tool === "get_net_worth"}>
+        <LabeledTool part={props.part} pendingLabel="Calculating net worth..." />
+      </Match>
       <Match when={props.part.tool === "get_price"}>
         <PriceTool part={props.part} />
+      </Match>
+      {/* ── List tools ── */}
+      <Match when={props.part.tool === "list_accounts"}>
+        <LabeledTool part={props.part} pendingLabel="Loading accounts..." />
+      </Match>
+      <Match when={props.part.tool === "list_debts"}>
+        <LabeledTool part={props.part} pendingLabel="Loading debts..." />
+      </Match>
+      <Match when={props.part.tool === "list_budgets"}>
+        <LabeledTool part={props.part} pendingLabel="Loading budgets..." />
+      </Match>
+      <Match when={props.part.tool === "list_goals"}>
+        <LabeledTool part={props.part} pendingLabel="Loading goals..." />
+      </Match>
+      <Match when={props.part.tool === "list_transactions"}>
+        <LabeledTool part={props.part} pendingLabel="Loading transactions..." />
+      </Match>
+      <Match when={props.part.tool === "list_portfolio"}>
+        <LabeledTool part={props.part} pendingLabel="Loading portfolio..." />
+      </Match>
+      <Match when={props.part.tool === "list_recurring"}>
+        <LabeledTool part={props.part} pendingLabel="Loading recurring..." />
+      </Match>
+      {/* ── Portfolio tools ── */}
+      <Match when={props.part.tool === "add_position"}>
+        <LabeledTool part={props.part} pendingLabel="Adding position..." />
+      </Match>
+      <Match when={props.part.tool === "update_position"}>
+        <LabeledTool part={props.part} pendingLabel="Updating position..." />
+      </Match>
+      <Match when={props.part.tool === "close_position"}>
+        <LabeledTool part={props.part} pendingLabel="Closing position..." />
+      </Match>
+      {/* ── Todo / Skill tools ── */}
+      <Match when={props.part.tool === "todowrite" || props.part.tool === "todoread"}>
+        <TodoTool part={props.part} />
+      </Match>
+      <Match when={props.part.tool === "skill"}>
+        <SkillTool part={props.part} />
       </Match>
     </Switch>
   )
@@ -543,6 +615,173 @@ function GenericTool(props: { part: Message.ToolPart }) {
         </box>
       </BlockTool>
     </Show>
+  )
+}
+
+// ── LabeledTool — generic tool with a custom pending label ─────────────────────
+// While running: InlineTool spinner with the given label.
+// When completed: BlockTool with collapsible output (same as GenericTool).
+
+function LabeledTool(props: { part: Message.ToolPart; pendingLabel: string }) {
+  const { theme } = useTheme()
+  const isRunning = () => props.part.state.status === "running"
+  const isCompleted = () => props.part.state.status === "completed"
+  const isError = () => props.part.state.status === "error"
+  const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
+  const output = () => (props.part.state.status === "completed" ? props.part.state.output : undefined)
+  const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
+
+  const [expanded, setExpanded] = createSignal(false)
+  const outputLines = createMemo(() => output()?.split("\n") ?? [])
+  const overflow = createMemo(() => outputLines().length > 8)
+  const limitedOutput = createMemo(() => {
+    const o = output() ?? ""
+    if (!overflow() || expanded()) return o
+    return [...outputLines().slice(0, 8), "…"].join("\n")
+  })
+
+  return (
+    <Show
+      when={output() !== undefined}
+      fallback={
+        <InlineTool
+          tool={props.part.tool}
+          pending={props.pendingLabel}
+          running={isRunning()}
+          complete={isCompleted() || isError()}
+          error={error()}
+        >
+          {title() ?? props.part.tool}
+        </InlineTool>
+      }
+    >
+      <BlockTool
+        title={title() ?? props.part.tool}
+        running={isRunning()}
+        error={error()}
+        onClick={overflow() ? () => setExpanded((p) => !p) : undefined}
+      >
+        <box gap={1}>
+          <text fg={theme().text}>{limitedOutput()}</text>
+          <Show when={overflow()}>
+            <text fg={theme().textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
+          </Show>
+        </box>
+      </BlockTool>
+    </Show>
+  )
+}
+
+// ── TodoTool — visual task list for todowrite / todoread ───────────────────────
+
+type TodoItem = { content: string; status: string; priority: string }
+
+function TodoTool(props: { part: Message.ToolPart }) {
+  const { theme } = useTheme()
+
+  const todos = createMemo((): TodoItem[] => {
+    const input = props.part.state.input as { todos?: TodoItem[] }
+    return input.todos ?? []
+  })
+
+  const isRunning = () => props.part.state.status === "running"
+  const isError = () => props.part.state.status === "error"
+  const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
+  const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
+
+  function statusIcon(status: string): string {
+    if (status === "completed") return "✓"
+    if (status === "in_progress") return "●"
+    if (status === "cancelled") return "✗"
+    return "○"
+  }
+
+  function todoFg(status: string, t: ReturnType<typeof theme>): RGBA {
+    if (status === "completed") return t.textMuted
+    if (status === "in_progress") return t.accent
+    if (status === "cancelled") return t.textMuted
+    return t.text
+  }
+
+  function priorityFg(priority: string, t: ReturnType<typeof theme>): RGBA {
+    if (priority === "high") return t.accent
+    return t.textMuted
+  }
+
+  return (
+    <box paddingLeft={3} marginTop={0} flexDirection="column">
+      {/* Header row — spinner while running, summary when done */}
+      <Show
+        when={isRunning()}
+        fallback={
+          <Show when={todos().length > 0}>
+            <text>
+              <span style={{ fg: isError() ? theme().error : theme().textMuted }}>
+                {isError() ? "✗" : "✓"}
+              </span>
+              {"  "}
+              <span style={{ fg: theme().textMuted }}>{"todowrite"}</span>
+              {"  "}
+              <span style={{ fg: isError() ? theme().error : theme().textMuted }}>
+                {error() ?? title() ?? "tasks updated"}
+              </span>
+            </text>
+          </Show>
+        }
+      >
+        <Spinner color={theme().accent}>
+          <span style={{ fg: theme().textMuted }}>{"todowrite"}</span>
+          {"  "}
+          <span style={{ fg: theme().textMuted }}>{"updating tasks..."}</span>
+        </Spinner>
+      </Show>
+
+      {/* Todo rows — always visible once we have todos */}
+      <Show when={todos().length > 0}>
+        <box flexDirection="column" paddingLeft={3} marginTop={0}>
+          <For each={todos()}>
+            {(todo) => (
+              <text>
+                <span style={{ fg: todoFg(todo.status, theme()) }}>
+                  {statusIcon(todo.status)}
+                </span>
+                {"  "}
+                <span style={{ fg: todoFg(todo.status, theme()) }}>
+                  {todo.content}
+                </span>
+                {"  "}
+                <span style={{ fg: priorityFg(todo.priority, theme()) }}>
+                  {todo.priority}
+                </span>
+              </text>
+            )}
+          </For>
+        </box>
+      </Show>
+    </box>
+  )
+}
+
+// ── SkillTool — shows which skill was loaded ────────────────────────────────────
+
+function SkillTool(props: { part: Message.ToolPart }) {
+  const inp = () => props.part.state.input as { name?: string }
+  const isRunning = () => props.part.state.status === "running"
+  const isCompleted = () => props.part.state.status === "completed"
+  const isError = () => props.part.state.status === "error"
+  const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
+  const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
+
+  return (
+    <InlineTool
+      tool="skill"
+      pending={`Loading skill: ${inp().name ?? ""}...`}
+      running={isRunning()}
+      complete={isCompleted() || isError()}
+      error={error()}
+    >
+      {title() ?? `skill: ${inp().name ?? ""}`}
+    </InlineTool>
   )
 }
 

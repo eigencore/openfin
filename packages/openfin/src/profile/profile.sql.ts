@@ -1,6 +1,15 @@
 import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core"
 import { Timestamps } from "../storage/schema.sql"
 
+// Single-row table — always upserted with id = "default"
+export const IncomeProfileTable = sqliteTable("income_profile", {
+  id: text().primaryKey(),        // always "default"
+  amount: real().notNull(),       // net monthly income (take-home)
+  currency: text().notNull().default("MXN"),
+  notes: text(),                  // e.g. "salary + freelance"
+  ...Timestamps,
+})
+
 export const PortfolioPositionTable = sqliteTable("portfolio_position", {
   id: text().primaryKey(),
   symbol: text().notNull(),          // "AAPL", "BTC-USD", "VOO", "AMXL.MX"

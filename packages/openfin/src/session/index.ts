@@ -3,7 +3,7 @@ import { Database, eq, desc } from "../storage/db"
 import { NotFoundError } from "../storage/db"
 import { SessionTable, MessageTable, PartTable } from "./session.sql"
 import { Provider } from "../provider/provider"
-import { FINANCE_SYSTEM_PROMPT } from "../provider/system"
+import { getSystemPrompt } from "../provider/system"
 import { buildFinancialContext } from "../profile/context"
 import { Skill } from "../skill/skill"
 import { Bus } from "../bus/index"
@@ -206,7 +206,7 @@ export namespace Session {
     // 3. Mark session as busy
     await Bus.publish(Bus.SessionStatus, { sessionID: sessionId, status: "busy" })
 
-    // 4. Build system prompt — financial context + skill list (names+descriptions only, no content)
+    // 4. Build system prompt — provider-specific + financial context + skill list
     const financialContext = buildFinancialContext()
     const skills = await Skill.load()
     const skillsContext =
@@ -217,7 +217,8 @@ export namespace Session {
             Skill.fmt(skills, { verbose: true }),
           ].join("\n")
         : undefined
-    const parts = [FINANCE_SYSTEM_PROMPT]
+    const basePrompt = getSystemPrompt(modelId)
+    const parts = [basePrompt]
     if (financialContext) parts.push(financialContext)
     if (skillsContext) parts.push(skillsContext)
     const system = parts.join("\n\n")
@@ -234,6 +235,11 @@ export namespace Session {
       const tools = ToolRegistry.toAITools({ sessionID: sessionId, messageID: assistantMsgID, abort: controller.signal })
       // 5. Manual tool loop — each iteration is one LLM step
       const MAX_STEPS = 10
+      const MAX_STEPS_MESSAGE =
+        "\n\n[SYSTEM: Maximum steps reached. Tools are disabled. Summarize what you have done and what remains, then wait for the user.]"
+      // Doom loop detection: track last 3 tool signatures (tool + JSON input)
+      const recentToolCalls: string[] = []
+      const DOOM_LOOP_THRESHOLD = 3
       const userContent =
         attachments.length > 0
           ? [
@@ -262,7 +268,27 @@ export namespace Session {
           } satisfies Message.StepStartPart,
         })
 
-        const result = streamText({ model, system, messages: stepMessages, tools, toolChoice: "auto" })
+        // Inject max-steps notice on the final step so the model knows tools are ending
+        const isLastStep = step === MAX_STEPS - 1
+        const lastMsg = stepMessages[stepMessages.length - 1]!
+        const effectiveMessages: ModelMessage[] = isLastStep
+          ? [
+              ...stepMessages.slice(0, -1),
+              {
+                ...lastMsg,
+                content:
+                  typeof lastMsg.content === "string" ? lastMsg.content + MAX_STEPS_MESSAGE : lastMsg.content,
+              } as ModelMessage,
+            ]
+          : stepMessages
+
+        const result = streamText({
+          model,
+          system,
+          messages: effectiveMessages,
+          tools: isLastStep ? {} : tools,
+          toolChoice: "auto",
+        })
 
         for await (const part of result.fullStream) {
           if (part.type === "text-delta") {
@@ -313,6 +339,29 @@ export namespace Session {
         if (finishReason !== "tool-calls") break
 
         const { messages: newMessages } = await result.response
+
+        // Doom loop detection: if the same tool is called with the same input 3 times, abort
+        for (const msg of newMessages) {
+          if (msg.role !== "assistant") continue
+          const parts = Array.isArray(msg.content) ? msg.content : []
+          for (const part of parts) {
+            if ((part as any).type !== "tool-call") continue
+            const sig = `${(part as any).toolName}:${JSON.stringify((part as any).args)}`
+            recentToolCalls.push(sig)
+            if (recentToolCalls.length > DOOM_LOOP_THRESHOLD) recentToolCalls.shift()
+            if (
+              recentToolCalls.length === DOOM_LOOP_THRESHOLD &&
+              recentToolCalls.every((s) => s === sig)
+            ) {
+              log.warn("doom loop detected, breaking", { tool: (part as any).toolName })
+              const loopWarning = `\n\n⚠️ Detected repeated identical calls to \`${(part as any).toolName}\`. Stopping to avoid a loop. Please check what went wrong and try a different approach.`
+              fullText += loopWarning
+              yield loopWarning
+              return
+            }
+          }
+        }
+
         stepMessages = [...stepMessages, ...newMessages]
       }
 

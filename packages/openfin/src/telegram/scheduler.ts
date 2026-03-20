@@ -14,19 +14,14 @@ const DAILY_HOUR = 8 // local hour (0–23) when reports fire
 const CHECK_INTERVAL_MS = 60 * 1000 // check every minute
 
 const DAILY_PROMPT =
-  "Generate a brief financial summary to start the day: " +
-  "1) active alerts if any, " +
-  "2) budget status for the month (categories near or over the limit), " +
-  "3) upcoming recurring transactions in the next 3 days. " +
-  "Be concise — maximum 5 lines per section."
+  "Good morning! Run a quick daily check. Use check_alerts first. Then check budget status for this month " +
+  "(flag any category over 80% of its limit). Finally, list any recurring transactions due in the next 3 days. " +
+  "Be concise — no more than 5 lines per section. Lead with anything that needs immediate attention."
 
 const WEEKLY_PROMPT =
-  "Generate the full weekly report: " +
-  "1) spending summary for the last 7 days vs budget, " +
-  "2) progress on savings goals, " +
-  "3) debt status (total balance, upcoming payments), " +
-  "4) one concrete recommendation for this week. " +
-  "Use tables or lists where it helps clarity."
+  "Weekly financial review. Use the financial_analysis skill to run a full analysis. " +
+  "Focus on: spending trends vs last week, goal progress, and the single most impactful action the user could take this week. " +
+  "End with one concrete next step."
 
 async function sendReport(bot: Bot, chatId: number, prompt: string) {
   try {

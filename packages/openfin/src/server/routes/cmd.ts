@@ -21,12 +21,56 @@ function periodLabel(p: Period): string {
 function cmdAccounts(): string {
   const accounts = Profile.listAccounts()
   if (!accounts.length) return "No accounts registered."
-  const lines = accounts.map((a) => {
-    const balance = a.balance < 0 ? `\x1b[31m${fmt(a.balance, a.currency)}\x1b[0m` : `\x1b[32m${fmt(a.balance, a.currency)}\x1b[0m`
-    const meta = [a.type, a.institution].filter(Boolean).join(" · ")
-    return `  ${a.name.padEnd(24)} ${balance}  ${meta}`
-  })
-  return `Accounts (${accounts.length})\n${lines.join("\n")}`
+
+  const regular = accounts.filter((a) => a.type !== "credit_card")
+  const creditCards = accounts.filter((a) => a.type === "credit_card")
+  const lines: string[] = [`Accounts (${accounts.length})`]
+
+  if (regular.length) {
+    lines.push("")
+    lines.push("  ── Assets ───────────────────────────────────────────")
+    for (const a of regular) {
+      const balStr = `\x1b[32m${fmt(a.balance, a.currency)}\x1b[0m`
+      const typeLabel = a.type !== "checking" && a.type !== "savings" ? `  [${a.type}]` : ""
+      const institution = a.institution ? `  ${a.institution}` : ""
+      lines.push(`  ${a.name.padEnd(24)} ${balStr}${typeLabel}${institution}`)
+    }
+    if (regular.length > 1) {
+      const total = regular.reduce((s, a) => s + a.balance, 0)
+      lines.push(`  ${"Total assets".padEnd(24)} ${fmt(total)}`)
+    }
+  }
+
+  if (creditCards.length) {
+    lines.push("")
+    lines.push("  ── Credit Cards ─────────────────────────────────────")
+    for (const a of creditCards) {
+      const owed = Math.abs(a.balance)
+      const owedStr = owed > 0 ? `-${fmt(owed, a.currency)}` : `$0.00 ${a.currency}`
+      const parts: string[] = [owedStr]
+      if (a.credit_limit) {
+        parts.push(`limit ${fmt(a.credit_limit, a.currency)}`)
+        parts.push(`avail ${fmt(a.credit_limit - owed, a.currency)}`)
+      }
+      if (a.institution) parts.push(a.institution)
+      lines.push(`  ${a.name.padEnd(24)} ${parts.join("  ·  ")}`)
+    }
+    if (creditCards.length > 1) {
+      const totalOwed = creditCards.reduce((s, a) => s + Math.abs(a.balance), 0)
+      lines.push(`  ${"Total owed".padEnd(24)} -${fmt(totalOwed)}`)
+    }
+  }
+
+  const totalAssets = regular.reduce((s, a) => s + a.balance, 0)
+  const totalOwed = creditCards.reduce((s, a) => s + Math.abs(a.balance), 0)
+  const debts = Profile.listDebts()
+  const totalDebt = debts.reduce((s, d) => s + d.balance, 0)
+  const netWorth = totalAssets - totalOwed - totalDebt
+  const nwColor = netWorth >= 0 ? "\x1b[32m" : "\x1b[31m"
+  lines.push("")
+  lines.push(`  ${"Net worth".padEnd(24)} ${nwColor}${fmt(netWorth)}\x1b[0m`)
+
+  return lines.join("\n")
 }
 
 function cmdDebts(): string {

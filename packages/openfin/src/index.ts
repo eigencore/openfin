@@ -35,27 +35,43 @@ async function startServer() {
   const { ProfileTools } = await import("./tool/profile-tools")
   const { PortfolioTools } = await import("./tool/portfolio-tools")
   const { SkillTool } = await import("./tool/skill")
+  const { TodoWriteTool, TodoReadTool } = await import("./tool/todo")
+  const { PurchaseAdvisorTool } = await import("./tool/purchase-advisor")
   const { Profile } = await import("./profile/profile")
+  const { Bus } = await import("./bus/index")
 
-  ToolRegistry.register(GetPriceTool, SkillTool, ...ProfileTools, ...PortfolioTools)
+  ToolRegistry.register(GetPriceTool, SkillTool, TodoWriteTool, TodoReadTool, PurchaseAdvisorTool, ...ProfileTools, ...PortfolioTools)
 
-  try {
-    Profile.takeNetWorthSnapshot()
-  } catch {
-    // Non-fatal — snapshot is best-effort
-  }
-
-  function runRecurringScheduler() {
+  function runDailyScheduler() {
+    // Net worth snapshot
     try {
-      const count = Profile.processDueRecurring()
-      if (count > 0) console.log(`[scheduler] Logged ${count} recurring transaction(s)`)
+      Profile.takeNetWorthSnapshot()
+    } catch {
+      // Non-fatal
+    }
+
+    // Recurring transactions
+    try {
+      const logged = Profile.processDueRecurring()
+      if (logged.length > 0) {
+        console.log(`[scheduler] Logged ${logged.length} recurring transaction(s)`)
+        Bus.publish(Bus.RecurringAutoLogged, {
+          items: logged.map((r) => ({
+            title: r.title,
+            amount: r.amount,
+            type: r.type,
+            category: r.category,
+            currency: r.currency,
+          })),
+        }).catch(() => {})
+      }
     } catch (err) {
       console.error("[scheduler] Error processing recurring transactions:", err)
     }
   }
 
-  runRecurringScheduler()
-  setInterval(runRecurringScheduler, 24 * 60 * 60 * 1000)
+  runDailyScheduler()
+  setInterval(runDailyScheduler, 24 * 60 * 60 * 1000)
 
   Server.listen()
 }

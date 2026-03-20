@@ -1,6 +1,6 @@
-import { sql, eq, and, gte, lte, desc } from "drizzle-orm"
+import { sql, eq, and, gt, gte, lte, desc } from "drizzle-orm"
 import { Database } from "../storage/db"
-import { AccountTable, DebtTable, BudgetTable, GoalTable, TransactionTable, NetWorthSnapshotTable, RecurringTransactionTable, PortfolioPositionTable } from "./profile.sql"
+import { AccountTable, DebtTable, BudgetTable, GoalTable, TransactionTable, NetWorthSnapshotTable, RecurringTransactionTable, PortfolioPositionTable, IncomeProfileTable } from "./profile.sql"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,7 @@ export interface Goal {
   target_date: number | null
   currency: string
   notes: string | null
+  time_created: number
 }
 
 export interface Transaction {
@@ -103,6 +104,12 @@ export interface NetWorthSnapshot {
   debts: number
   net_worth: number
   currency: string
+}
+
+export interface Income {
+  amount: number
+  currency: string
+  notes: string | null
 }
 
 export interface ExpenseSummary {
@@ -863,6 +870,7 @@ export namespace Profile {
       target_date: r.target_date ?? null,
       currency: r.currency,
       notes: r.notes ?? null,
+      time_created: r.time_created,
     }
   }
 
@@ -991,9 +999,9 @@ export namespace Profile {
 
   /**
    * Process all due recurring transactions.
-   * Returns the number of transactions logged.
+   * Returns the list of transactions that were logged.
    */
-  export function processDueRecurring(): number {
+  export function processDueRecurring(): RecurringTransaction[] {
     const now = Date.now()
     const due = Database.use((db) =>
       db
@@ -1008,7 +1016,7 @@ export namespace Profile {
         .all(),
     )
 
-    let count = 0
+    const logged: RecurringTransaction[] = []
     for (const row of due) {
       const rec = toRecurring(row)
 
@@ -1048,10 +1056,32 @@ export namespace Profile {
           .run()
       })
 
-      count++
+      logged.push(rec)
     }
 
-    return count
+    return logged
+  }
+
+  /**
+   * Returns recurring transactions due within the next `days` days (not yet overdue).
+   */
+  export function upcomingRecurring(days = 7): RecurringTransaction[] {
+    const now = Date.now()
+    const limit = now + days * 24 * 60 * 60 * 1000
+    return Database.use((db) =>
+      db
+        .select()
+        .from(RecurringTransactionTable)
+        .where(
+          and(
+            eq(RecurringTransactionTable.active, 1),
+            gt(RecurringTransactionTable.next_due, now),
+            lte(RecurringTransactionTable.next_due, limit),
+          ),
+        )
+        .all()
+        .map(toRecurring),
+    )
   }
 
   // ── Portfolio ──────────────────────────────────────────────────────────────
@@ -1157,5 +1187,39 @@ export namespace Profile {
     if (!existing) return false
     Database.use((db) => db.delete(PortfolioPositionTable).where(eq(PortfolioPositionTable.id, id)).run())
     return true
+  }
+
+  // ── Income profile ────────────────────────────────────────────────────────────
+
+  export function setIncome(amount: number, currency = "MXN", notes?: string): Income {
+    const now = Date.now()
+    const existing = Database.use((db) =>
+      db.select().from(IncomeProfileTable).where(eq(IncomeProfileTable.id, "default")).get(),
+    )
+    if (existing) {
+      Database.use((db) =>
+        db
+          .update(IncomeProfileTable)
+          .set({ amount, currency, notes: notes ?? null, time_updated: now })
+          .where(eq(IncomeProfileTable.id, "default"))
+          .run(),
+      )
+    } else {
+      Database.use((db) =>
+        db
+          .insert(IncomeProfileTable)
+          .values({ id: "default", amount, currency, notes: notes ?? null, time_created: now, time_updated: now })
+          .run(),
+      )
+    }
+    return { amount, currency, notes: notes ?? null }
+  }
+
+  export function getIncome(): Income | null {
+    const row = Database.use((db) =>
+      db.select().from(IncomeProfileTable).where(eq(IncomeProfileTable.id, "default")).get(),
+    )
+    if (!row) return null
+    return { amount: row.amount, currency: row.currency, notes: row.notes ?? null }
   }
 }

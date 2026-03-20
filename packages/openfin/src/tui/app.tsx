@@ -16,6 +16,7 @@ import { ModelsProvider } from "./context/models"
 import { DialogModel } from "./component/dialog-model"
 import { HomeRoute } from "./routes/home"
 import { SessionRoute } from "./routes/session/index"
+import { DashboardRoute } from "./routes/dashboard"
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,9 @@ function Router() {
           sessionID={(current() as { type: "session"; sessionID: string }).sessionID}
           initialPrompt={(current() as { type: "session"; initialPrompt?: string }).initialPrompt}
         />
+      </Match>
+      <Match when={current().type === "dashboard"}>
+        <DashboardRoute />
       </Match>
     </Switch>
   )
@@ -137,6 +141,15 @@ function Commands() {
       slash: "exit",
       category: "General",
       action: () => exit("Goodbye from OpenFin!"),
+    })
+
+    registry.register({
+      id: "dashboard",
+      title: "Dashboard",
+      description: "Full-screen financial overview",
+      slash: "dashboard",
+      category: "Finance",
+      action: () => route.navigate({ type: "dashboard" }),
     })
 
     registry.register({

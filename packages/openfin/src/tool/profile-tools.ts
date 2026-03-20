@@ -2,6 +2,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Profile } from "../profile/profile"
 import { normalizeCategory, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "../profile/categories"
+import { Bus } from "../bus/index"
 
 const fmt = (n: number, currency = "MXN") =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
@@ -204,6 +205,33 @@ export const LogTransactionTool = Tool.define("log_transaction", {
     ]
     if (resolvedAccountName && newAccountBalance !== undefined) {
       parts.push(`New balance for "${resolvedAccountName}": ${fmt(newAccountBalance, tx.currency)}`)
+    }
+
+    // Post-action: check budget for expense category
+    if (type === "expense") {
+      const budgets = Profile.listBudgets()
+      const budget = budgets.find((b) => b.category.toLowerCase() === normalizedCategory.toLowerCase())
+      if (budget) {
+        const spent = Profile.currentMonthExpensesByCategory()
+        const used = spent.get(budget.category.toLowerCase()) ?? 0
+        const pct = budget.amount === 0 ? 0 : Math.round((used / budget.amount) * 100)
+        if (pct >= 80) {
+          const status = pct >= 100 ? "🔴 OVER BUDGET" : "⚠️ Near limit"
+          parts.push(
+            `\nBudget alert — ${category}: ${fmt(used, budget.currency)} / ${fmt(budget.amount, budget.currency)} (${pct}%) ${status}`,
+          )
+          if (pct >= 100) {
+            // Fire-and-forget: publish bus event for Telegram push notification
+            Bus.publish(Bus.BudgetAlert, {
+              category: budget.category,
+              used,
+              limit: budget.amount,
+              percent: pct,
+              currency: budget.currency,
+            }).catch(() => {})
+          }
+        }
+      }
     }
 
     return {
@@ -561,6 +589,14 @@ export const ContributeToGoalTool = Tool.define("contribute_to_goal", {
     ]
     if (resolvedAccountName && newAccountBalance !== undefined) {
       lines.push(`New balance for "${resolvedAccountName}": ${fmt(newAccountBalance)}`)
+    }
+
+    if (reached) {
+      Bus.publish(Bus.GoalReached, {
+        name: goal.name,
+        amount: goal.target_amount,
+        currency: goal.currency,
+      }).catch(() => {})
     }
 
     return { title: `Contribution: ${name}`, output: lines.join("\n") }
@@ -962,6 +998,29 @@ export const DeleteTransactionTool = Tool.define("delete_transaction", {
   },
 })
 
+// ── set_income ────────────────────────────────────────────────────────────────
+
+export const SetIncomeTool = Tool.define("set_income", {
+  description:
+    "Save or update the user's monthly net income (take-home pay after taxes). " +
+    "Call this when the user tells you their salary, income, or how much they earn per month. " +
+    "This persists so it does not need to be asked again — but update it whenever the user mentions a raise or income change.",
+
+  parameters: z.object({
+    amount: z.number().describe("Monthly net income — take-home after taxes"),
+    currency: z.string().optional().describe("Currency code, default MXN"),
+    notes: z.string().optional().describe("Optional context, e.g. 'salary + freelance' or 'after raise in March 2026'"),
+  }),
+
+  async execute({ amount, currency, notes }) {
+    const income = Profile.setIncome(amount, currency, notes)
+    return {
+      title: "Monthly income saved",
+      output: `Monthly income set to ${fmt(income.amount, income.currency)}${income.notes ? ` (${income.notes})` : ""}.`,
+    }
+  },
+})
+
 export const ProfileTools = [
   UpsertAccountTool,
   UpsertDebtTool,
@@ -988,4 +1047,5 @@ export const ProfileTools = [
   ListRecurringTool,
   PauseRecurringTool,
   DeleteRecurringTool,
+  SetIncomeTool,
 ]

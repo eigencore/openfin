@@ -99,14 +99,25 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   }
 
   // ── Accounts ──────────────────────────────────────────────────────────────
+  const assets = data.accounts.filter((a) => a.type !== "credit_card")
+  const cards = data.accounts.filter((a) => a.type === "credit_card")
   if (data.accounts.length > 0) {
     push("divider")
     push("header", "ACCOUNTS", "accent")
-    for (const a of data.accounts.slice(0, 4)) {
+    for (const a of assets.slice(0, 4)) {
       const bal = fmt(a.balance)
       const maxLabel = innerW - bal.length - 1
       const label = truncate(a.name, maxLabel).padEnd(maxLabel)
-      push("row", `${label} ${bal}`)
+      push("row", `${label} ${bal}`, "success")
+    }
+    if (cards.length > 0) {
+      for (const a of cards.slice(0, 2)) {
+        const owed = Math.abs(a.balance)
+        const bal = owed > 0 ? `-${fmt(owed)}` : fmt(0)
+        const maxLabel = innerW - bal.length - 1
+        const label = truncate(a.name, maxLabel).padEnd(maxLabel)
+        push("row", `${label} ${bal}`, owed > 0 ? "error" : "success")
+      }
     }
   }
 
@@ -166,7 +177,7 @@ interface Props {
 
 export function DashboardPanel(props: Props) {
   const t = () => props.theme
-  const innerW = () => props.width - 1
+  const innerW = () => props.width - 2
 
   const resolveColor = (color: Row["color"]) => {
     const theme = t()
