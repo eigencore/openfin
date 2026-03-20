@@ -1,10 +1,10 @@
 /**
- * openfin auth — Manage provider API keys
+ * openfin auth — Manage AI provider API keys
  *
  * Usage:
- *   bun run auth login              Interactive: select provider + enter key
- *   bun run auth logout             Interactive: select provider to remove
- *   bun run auth list               Show all configured credentials + env vars
+ *   openfin auth login    Interactive: select provider + enter key
+ *   openfin auth logout   Interactive: select provider to remove
+ *   openfin auth list     Show all configured credentials + env vars
  */
 
 import * as prompts from "@clack/prompts"
@@ -14,9 +14,8 @@ import { Auth } from "../auth/index"
 import { ModelsDev } from "../provider/models"
 import { Global } from "../global/index"
 
-const [, , command] = process.argv
+const [, , , command] = process.argv
 
-// Priority order for provider display (same as opencode)
 const PRIORITY: Record<string, number> = {
   anthropic: 0,
   openai: 1,
@@ -28,7 +27,7 @@ const PRIORITY: Record<string, number> = {
 }
 
 async function login() {
-  prompts.intro("Add credential")
+  prompts.intro("Add AI provider credential")
 
   await ModelsDev.refresh().catch(() => {})
   const database = await ModelsDev.get()
@@ -61,9 +60,9 @@ async function login() {
 }
 
 async function logout() {
-  prompts.intro("Remove credential")
+  prompts.intro("Remove AI provider credential")
 
-  const credentials = Object.entries(await Auth.all())
+  const credentials = Object.entries(await Auth.all()).filter(([id]) => id !== "telegram")
   if (credentials.length === 0) {
     prompts.log.error("No credentials found")
     prompts.outro("Done")
@@ -72,9 +71,9 @@ async function logout() {
 
   const database = await ModelsDev.get()
   const selected = await prompts.select({
-    message: "Select provider",
+    message: "Select provider to remove",
     options: credentials.map(([id]) => ({
-      label: (database[id]?.name ?? id) + "  (api)",
+      label: database[id]?.name ?? id,
       value: id,
     })),
   })
@@ -95,20 +94,19 @@ async function list() {
   prompts.intro(`Credentials  ${displayPath}`)
 
   const database = await ModelsDev.get()
-  const credentials = Object.entries(await Auth.all())
+  const credentials = Object.entries(await Auth.all()).filter(([id]) => id !== "telegram")
 
   if (credentials.length === 0) {
     prompts.log.warn("No credentials saved. Run: openfin auth login")
   } else {
     for (const [id] of credentials) {
-      const name = database[id]?.name ?? id
-      prompts.log.info(`${name}  api`)
+      prompts.log.info(database[id]?.name ?? id)
     }
   }
 
   prompts.outro(`${credentials.length} credential${credentials.length === 1 ? "" : "s"}`)
 
-  // Show active env vars separately (same as opencode)
+  // Show active env vars
   const activeEnvVars: Array<{ provider: string; envVar: string }> = []
   for (const [id, provider] of Object.entries(database)) {
     for (const envVar of provider.env) {
@@ -142,9 +140,9 @@ async function main() {
       break
     default:
       console.log(`Usage:
-  bun run auth login    Add a provider credential
-  bun run auth logout   Remove a provider credential
-  bun run auth list     Show configured credentials`)
+  openfin auth login    Add a provider API key
+  openfin auth logout   Remove a provider API key
+  openfin auth list     Show configured credentials`)
   }
 }
 

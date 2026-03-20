@@ -13,6 +13,10 @@ switch (subcommand) {
     await import("./telegram/index")
     break
 
+  case "auth":
+    await import("./cli/auth")
+    break
+
   case "server":
   case undefined:
     await startServer()
@@ -20,7 +24,7 @@ switch (subcommand) {
 
   default:
     console.error(`Unknown subcommand: ${subcommand}`)
-    console.error(`Usage: openfin [server|tui|chat|telegram]`)
+    console.error(`Usage: openfin [server|tui|chat|telegram|auth]`)
     process.exit(1)
 }
 

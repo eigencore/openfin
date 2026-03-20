@@ -12,10 +12,10 @@ Track accounts, credit cards, debts, budgets, goals, and investments through a n
 no cloud, no subscriptions, no spreadsheets.
 
 ```
-You: gasté 450 en el super con la tarjeta banamex
-OpenFin: Gasto registrado: $450.00 MXN en Comida — "super" (19 mar)
-         Tarjeta Banamex: $3,240.00 MXN adeudado / límite $50,000.00
-         ⚠️  Llevas 78% del presupuesto de Comida este mes.
+You: I spent $450 at the grocery store with my Banamex card
+OpenFin: Expense logged: $450.00 MXN in Food — "grocery store" (Mar 19)
+         Banamex card: $3,240.00 MXN owed / limit $50,000.00
+         ⚠️  You're at 78% of your Food budget this month.
 ```
 
 </div>
@@ -42,15 +42,27 @@ bun run dev
 
 ## Setup
 
-Set at least one provider API key:
+Use the interactive auth command to configure your API keys — no environment variables needed:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...   # default provider
-# or
-export OPENAI_API_KEY=sk-...
+openfin auth login
 ```
 
-OpenFin defaults to `claude-sonnet-4-5` and falls back to `gpt-4o` if `ANTHROPIC_API_KEY` is absent.
+Select a provider (Anthropic, OpenAI, Google, Groq…) and paste your API key. Keys are stored in `~/.openfin/auth.json` with `600` permissions.
+
+```bash
+openfin auth list     # show configured credentials
+openfin auth logout   # remove a credential
+```
+
+OpenFin defaults to `claude-sonnet-4-5` and falls back to `gpt-4o` if no Anthropic key is found.
+
+You can also set keys via environment variables (takes priority over stored credentials):
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+```
 
 ## Usage
 
@@ -79,8 +91,8 @@ openfin chat --model openai:gpt-4o    # pick a model
 
 **Telegram**
 ```bash
+openfin telegram login           # paste your token from @BotFather
 openfin                          # Terminal 1
-export TELEGRAM_BOT_TOKEN=...
 openfin telegram                 # Terminal 2
 ```
 
@@ -179,7 +191,7 @@ bunx drizzle-kit generate   # generate migration after schema changes
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Anthropic API key (primary provider) |
 | `OPENAI_API_KEY` | — | OpenAI fallback |
-| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token (optional) |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram bot token — or use `openfin telegram login` |
 | `OPENFIN_SERVER` | `http://localhost:4096` | Server URL used by TUI, CLI, and Telegram |
 | `PORT` | `4096` | HTTP server port |
 
