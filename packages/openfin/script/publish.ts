@@ -48,7 +48,7 @@ for (const pkg of platforms) {
 }
 
 // ── 2. Publish main openfin-ai package ────────────────────────────────────
-console.log("\nPublishing openfin-ai to npm...")
+console.log("\nPublishing @eigencore/openfin to npm...")
 await $`npm publish . --access public`
 
 // ── 3. Create GitHub Release and upload binaries ──────────────────────────

@@ -68,9 +68,10 @@ if (!singleFlag) {
 }
 
 for (const { os, arch } of targets) {
-  const pkgName = `openfin-${os === "win32" ? "windows" : os}-${arch}`
+  const pkgName = `@eigencore/openfin-${os === "win32" ? "windows" : os}-${arch}`
+  const dirName = `openfin-${os === "win32" ? "windows" : os}-${arch}`
   const binary = os === "win32" ? "openfin.exe" : "openfin"
-  const outDir = path.join("dist", pkgName, "bin")
+  const outDir = path.join("dist", dirName, "bin")
 
   await $`mkdir -p ${outDir}`
 
@@ -112,7 +113,7 @@ for (const { os, arch } of targets) {
     },
   }
 
-  await Bun.write(path.join("dist", pkgName, "package.json"), JSON.stringify(pkgJson, null, 2))
+  await Bun.write(path.join("dist", dirName, "package.json"), JSON.stringify(pkgJson, null, 2))
 }
 
 console.log("\nBuild complete → dist/")
