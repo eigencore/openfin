@@ -5,7 +5,7 @@ import type { Theme } from "../context/theme"
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 const fmt = (n: number) =>
-  `$${n.toLocaleString("es-MX", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 
 function progressBar(current: number, target: number, width = 10): string {
   const ratio = Math.min(1, target === 0 ? 0 : current / target)
@@ -56,13 +56,13 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   const nw = data.netWorth
 
   // ── Net worth ─────────────────────────────────────────────────────────────
-  push("header", "PATRIMONIO NETO", "accent")
+  push("header", "NET WORTH", "accent")
   push("row", `Total:   ${fmt(nw.net_worth)} ${nw.currency}`, nw.net_worth >= 0 ? "success" : "error")
-  push("row", `Activos: ${fmt(nw.assets)}`)
-  push("row", `Deudas:  ${fmt(nw.debts)}`)
+  push("row", `Assets:  ${fmt(nw.assets)}`)
+  push("row", `Debts:   ${fmt(nw.debts)}`)
   if (nw.delta !== undefined) {
     const sign = nw.delta >= 0 ? "+" : ""
-    push("row", `Cambio:  ${sign}${fmt(nw.delta)}`, nw.delta >= 0 ? "success" : "error")
+    push("row", `Change:  ${sign}${fmt(nw.delta)}`, nw.delta >= 0 ? "success" : "error")
   }
 
   // ── Net worth sparkline ────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   // ── Top expenses ──────────────────────────────────────────────────────────
   if ((data.topExpenses?.length ?? 0) > 0) {
     push("divider")
-    push("header", "GASTOS DEL MES", "accent")
+    push("header", "MONTHLY EXPENSES", "accent")
     const maxExpense = Math.max(...data.topExpenses.map((e) => e.amount), 1)
     for (const e of data.topExpenses.slice(0, 5)) {
       const amt = fmt(e.amount)
@@ -93,7 +93,7 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   const warnings = data.alerts.filter((a) => a.severity === "warning").slice(0, 2)
   if (data.alerts.length > 0) {
     push("divider")
-    push("header", "ALERTAS", "accent")
+    push("header", "ALERTS", "accent")
     for (const a of critical) push("row", `! ${truncate(a.message, innerW - 2)}`, "error")
     for (const a of warnings) push("row", `~ ${truncate(a.message, innerW - 2)}`, "warning")
   }
@@ -101,7 +101,7 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   // ── Accounts ──────────────────────────────────────────────────────────────
   if (data.accounts.length > 0) {
     push("divider")
-    push("header", "CUENTAS", "accent")
+    push("header", "ACCOUNTS", "accent")
     for (const a of data.accounts.slice(0, 4)) {
       const bal = fmt(a.balance)
       const maxLabel = innerW - bal.length - 1
@@ -113,7 +113,7 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   // ── Budgets ───────────────────────────────────────────────────────────────
   if (data.budgets.length > 0) {
     push("divider")
-    push("header", "PRESUPUESTO", "accent")
+    push("header", "BUDGET", "accent")
     for (const b of data.budgets.slice(0, 4)) {
       const ratio = b.amount === 0 ? 0 : b.spent / b.amount
       const pct = `${Math.round(ratio * 100)}%`.padStart(4)
@@ -128,7 +128,7 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   // ── Goals ─────────────────────────────────────────────────────────────────
   if (data.goals.length > 0) {
     push("divider")
-    push("header", "METAS", "accent")
+    push("header", "GOALS", "accent")
     for (const g of data.goals.slice(0, 3)) {
       const pct = `${Math.min(100, g.target_amount === 0 ? 100 : Math.round((g.current_amount / g.target_amount) * 100))}%`.padStart(4)
       const bar = progressBar(g.current_amount, g.target_amount, 8)
@@ -141,7 +141,7 @@ function buildRows(data: DashboardData, innerW: number): Row[] {
   // ── Debts ─────────────────────────────────────────────────────────────────
   if (data.debts.length > 0) {
     push("divider")
-    push("header", "DEUDAS", "accent")
+    push("header", "DEBTS", "accent")
     for (const d of data.debts.slice(0, 3)) {
       const bal = fmt(d.balance)
       const maxLabel = innerW - bal.length - 1

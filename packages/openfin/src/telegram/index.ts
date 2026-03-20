@@ -22,14 +22,14 @@ const bot = createBot(token)
 
 // Register commands in Telegram (shown as autocomplete when user types /)
 await bot.api.setMyCommands([
-  { command: "new", description: "Nueva conversación" },
-  { command: "accounts", description: "Ver cuentas" },
-  { command: "budgets", description: "Ver presupuestos" },
-  { command: "goals", description: "Ver metas financieras" },
-  { command: "model", description: "Cambiar modelo de IA" },
-  { command: "history", description: "Sesiones anteriores" },
-  { command: "abort", description: "Cancelar respuesta en curso" },
-  { command: "help", description: "Ayuda" },
+  { command: "new", description: "New conversation" },
+  { command: "accounts", description: "View accounts" },
+  { command: "budgets", description: "View budgets" },
+  { command: "goals", description: "View financial goals" },
+  { command: "model", description: "Change AI model" },
+  { command: "history", description: "Previous sessions" },
+  { command: "abort", description: "Cancel current response" },
+  { command: "help", description: "Help" },
 ])
 
 // Connect to the OpenFin server SSE stream

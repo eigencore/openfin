@@ -15,7 +15,7 @@ const log = Log.create({ service: "server" })
 
 function buildDashboardHTML(): string {
   return `<!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -47,12 +47,12 @@ function buildDashboardHTML(): string {
 </head>
 <body>
   <h1>OpenFin Dashboard</h1>
-  <p class="subtitle" id="ts">Cargando...</p>
-  <div id="root"><p class="loading">Cargando datos financieros...</p></div>
+  <p class="subtitle" id="ts">Loading...</p>
+  <div id="root"><p class="loading">Loading financial data...</p></div>
 
   <script>
     const fmt = (n, cur = 'MXN') => {
-      const abs = Math.abs(n).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+      const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
       return (n < 0 ? '-$' : '$') + abs + ' ' + cur
     }
 
@@ -66,11 +66,11 @@ function buildDashboardHTML(): string {
       try {
         const d = await fetch('/profile/dashboard').then(r => r.json())
         document.getElementById('ts').textContent =
-          'Actualizado: ' + new Date().toLocaleTimeString('es-MX') +
-          ' · <a class="refresh-btn" onclick="load()">↻ Refrescar</a>'
+          'Updated: ' + new Date().toLocaleTimeString('en-US') +
+          ' · <a class="refresh-btn" onclick="load()">↻ Refresh</a>'
         render(d)
       } catch(e) {
-        document.getElementById('root').innerHTML = '<p class="loading">Error cargando datos: ' + e.message + '</p>'
+        document.getElementById('root').innerHTML = '<p class="loading">Error loading data: ' + e.message + '</p>'
       }
     }
 
@@ -80,7 +80,7 @@ function buildDashboardHTML(): string {
       const deltaClass = nw.delta == null ? 'neutral' : nw.delta >= 0 ? 'positive' : 'negative'
 
       const alertsHTML = d.alerts.length === 0
-        ? '<p style="color:#64748b;font-size:12px">Sin alertas activas</p>'
+        ? '<p style="color:#64748b;font-size:12px">No active alerts</p>'
         : d.alerts.map(a =>
             '<div class="alert alert-' + a.severity + '">' + a.message + '</div>'
           ).join('')
@@ -106,49 +106,49 @@ function buildDashboardHTML(): string {
         <div class="grid">
 
           <div class="card">
-            <h2>Patrimonio Neto</h2>
+            <h2>Net Worth</h2>
             <div class="stat-row">
               <span class="stat-label">Total</span>
               <span class="stat-value \${nw.net_worth >= 0 ? 'positive' : 'negative'}">\${fmt(nw.net_worth, nw.currency)}</span>
             </div>
             <div class="stat-row">
-              <span class="stat-label">Activos</span>
+              <span class="stat-label">Assets</span>
               <span class="stat-value neutral">\${fmt(nw.assets, nw.currency)}</span>
             </div>
             <div class="stat-row">
-              <span class="stat-label">Deudas</span>
+              <span class="stat-label">Debts</span>
               <span class="stat-value negative">\${fmt(nw.debts, nw.currency)}</span>
             </div>
-            \${delta ? '<div class="stat-row"><span class="stat-label">Cambio vs anterior</span><span class="stat-value ' + deltaClass + '">' + delta + '</span></div>' : ''}
+            \${delta ? '<div class="stat-row"><span class="stat-label">Change vs previous</span><span class="stat-value ' + deltaClass + '">' + delta + '</span></div>' : ''}
             \${d.netWorthHistory.length > 2 ? '<div class="chart-wrap-sm" style="margin-top:16px"><canvas id="nwChart"></canvas></div>' : ''}
           </div>
 
           <div class="card">
-            <h2>Gastos del Mes</h2>
+            <h2>Monthly Expenses</h2>
             \${d.topExpenses.length > 0
               ? '<div class="chart-wrap"><canvas id="expChart"></canvas></div>'
-              : '<p style="color:#64748b;font-size:12px">Sin gastos registrados este mes</p>'}
+              : '<p style="color:#64748b;font-size:12px">No expenses recorded this month</p>'}
           </div>
 
           <div class="card">
-            <h2>Presupuestos</h2>
+            <h2>Budgets</h2>
             \${d.budgets.length > 0
               ? '<div class="chart-wrap-sm" style="margin-bottom:12px"><canvas id="budgetChart"></canvas></div>' + budgetRows
-              : '<p style="color:#64748b;font-size:12px">Sin presupuestos configurados</p>'}
+              : '<p style="color:#64748b;font-size:12px">No budgets configured</p>'}
           </div>
 
           <div class="card">
-            <h2>Metas de Ahorro</h2>
-            \${d.goals.length > 0 ? goalsRows : '<p style="color:#64748b;font-size:12px">Sin metas configuradas</p>'}
+            <h2>Savings Goals</h2>
+            \${d.goals.length > 0 ? goalsRows : '<p style="color:#64748b;font-size:12px">No goals configured</p>'}
           </div>
 
           <div class="card">
-            <h2>Deudas</h2>
-            \${d.debts.length > 0 ? debtRows : '<p style="color:#64748b;font-size:12px">Sin deudas registradas</p>'}
+            <h2>Debts</h2>
+            \${d.debts.length > 0 ? debtRows : '<p style="color:#64748b;font-size:12px">No debts recorded</p>'}
           </div>
 
           <div class="card">
-            <h2>Alertas</h2>
+            <h2>Alerts</h2>
             \${alertsHTML}
           </div>
 
@@ -167,7 +167,7 @@ function buildDashboardHTML(): string {
 
       // Net worth trend
       if (d.netWorthHistory.length > 2) {
-        const labels = d.netWorthHistory.map(h => new Date(h.date).toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }))
+        const labels = d.netWorthHistory.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
         const values = d.netWorthHistory.map(h => h.value)
         charts.push(new Chart(document.getElementById('nwChart'), {
           type: 'line',
@@ -203,8 +203,8 @@ function buildDashboardHTML(): string {
           data: {
             labels: d.budgets.map(b => b.category),
             datasets: [
-              { label: 'Gastado', data: d.budgets.map(b => b.spent), backgroundColor: '#63b3ed', borderRadius: 4 },
-              { label: 'Límite',  data: d.budgets.map(b => b.amount), backgroundColor: '#2d3748', borderRadius: 4 },
+              { label: 'Spent', data: d.budgets.map(b => b.spent), backgroundColor: '#63b3ed', borderRadius: 4 },
+              { label: 'Limit', data: d.budgets.map(b => b.amount), backgroundColor: '#2d3748', borderRadius: 4 },
             ]
           },
           options: { ...chartDefaults, plugins: { legend: { display: true, labels: { color: '#94a3b8', font: { size: 10 } } } } },

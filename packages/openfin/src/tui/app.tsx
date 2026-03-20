@@ -70,7 +70,7 @@ function Commands() {
           title="Sessions"
           items={sessions.map((s) => ({
             label: s.title,
-            description: new Date(s.time.updated).toLocaleDateString("es-MX"),
+            description: new Date(s.time.updated).toLocaleDateString("en-US"),
             onSelect: () => route.navigate({ type: "session", sessionID: s.id }),
           }))}
         />

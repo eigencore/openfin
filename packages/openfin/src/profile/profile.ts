@@ -717,13 +717,13 @@ export namespace Profile {
         alerts.push({
           type: "overbudget",
           severity: "critical",
-          message: `Presupuesto de "${b.category}" excedido: $${used.toFixed(0)} / $${b.amount.toFixed(0)} (${Math.round(ratio * 100)}%)`,
+          message: `Budget for "${b.category}" exceeded: $${used.toFixed(0)} / $${b.amount.toFixed(0)} (${Math.round(ratio * 100)}%)`,
         })
       } else if (ratio >= 0.8) {
         alerts.push({
           type: "near_budget",
           severity: "warning",
-          message: `"${b.category}" al ${Math.round(ratio * 100)}% del presupuesto mensual ($${used.toFixed(0)} / $${b.amount.toFixed(0)})`,
+          message: `"${b.category}" at ${Math.round(ratio * 100)}% of monthly budget ($${used.toFixed(0)} / $${b.amount.toFixed(0)})`,
         })
       }
     }
@@ -745,7 +745,7 @@ export namespace Profile {
         alerts.push({
           type: "unusual_spending",
           severity: "warning",
-          message: `Gasto inusual en "${cat}": $${total.toFixed(0)} este mes vs $${avg.toFixed(0)} el mes pasado (+${Math.round((total / avg - 1) * 100)}%)`,
+          message: `Unusual spending in "${cat}": $${total.toFixed(0)} this month vs $${avg.toFixed(0)} last month (+${Math.round((total / avg - 1) * 100)}%)`,
         })
       }
     }
@@ -759,7 +759,7 @@ export namespace Profile {
         alerts.push({
           type: "debt_due",
           severity: daysUntilDue <= 2 ? "critical" : "warning",
-          message: `Pago de "${d.name}" vence en ${daysUntilDue === 0 ? "hoy" : `${daysUntilDue} día${daysUntilDue === 1 ? "" : "s"}`} (día ${d.due_day}). Mínimo: $${(d.min_payment ?? 0).toFixed(0)}`,
+          message: `Payment for "${d.name}" due in ${daysUntilDue === 0 ? "today" : `${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}`} (day ${d.due_day}). Minimum: $${(d.min_payment ?? 0).toFixed(0)}`,
         })
       }
     }
@@ -775,7 +775,7 @@ export namespace Profile {
         alerts.push({
           type: "goal_at_risk",
           severity: daysLeft <= 14 ? "critical" : "warning",
-          message: `Meta "${g.name}" en riesgo: ${Math.round(progress * 100)}% completada, faltan $${remaining.toFixed(0)} en ${daysLeft} días`,
+          message: `Goal "${g.name}" at risk: ${Math.round(progress * 100)}% complete, $${remaining.toFixed(0)} remaining in ${daysLeft} days`,
         })
       }
     }

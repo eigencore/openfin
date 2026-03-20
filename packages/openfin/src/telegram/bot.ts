@@ -166,14 +166,14 @@ export function createBot(token: string): Bot {
   bot.command("start", async (ctx) => {
     await getOrCreateSession(ctx.chat.id)
     await ctx.reply(
-      "👋 OpenFin conectado. Escribe cualquier mensaje para chatear con tu asistente financiero.\n\nComandos disponibles: /help",
+      "👋 OpenFin connected. Type any message to chat with your financial assistant.\n\nAvailable commands: /help",
     )
   })
 
-  // /new — nueva sesión
+  // /new — new session
   bot.command("new", async (ctx) => {
     await newSession(ctx.chat.id)
-    await ctx.reply("✅ Nueva sesión iniciada.")
+    await ctx.reply("✅ New session started.")
   })
 
   // /accounts
@@ -199,7 +199,7 @@ export function createBot(token: string): Bot {
     try {
       const models = await api.listModels()
       if (models.length === 0) {
-        await ctx.reply("No hay modelos disponibles. Verifica tu configuración de API keys.")
+        await ctx.reply("No models available. Check your API keys configuration.")
         return
       }
 
@@ -207,9 +207,9 @@ export function createBot(token: string): Bot {
       for (const model of models) {
         keyboard.text(`${model.name} · ${model.providerName}`, `model:${model.id}`).row()
       }
-      await ctx.reply("Selecciona un modelo:", { reply_markup: keyboard })
+      await ctx.reply("Select a model:", { reply_markup: keyboard })
     } catch (err) {
-      await ctx.reply("Error al cargar modelos.")
+      await ctx.reply("Error loading models.")
     }
   })
 
@@ -217,43 +217,43 @@ export function createBot(token: string): Bot {
   bot.command("abort", async (ctx) => {
     const sessionId = await SessionMap.get(ctx.chat.id)
     if (!sessionId) {
-      await ctx.reply("No hay sesión activa.")
+      await ctx.reply("No active session.")
       return
     }
     await api.abortSession(sessionId)
     activeStreams.delete(sessionId)
-    await ctx.reply("⏹ Respuesta cancelada.")
+    await ctx.reply("⏹ Response cancelled.")
   })
 
-  // /history — lista de sesiones
+  // /history — session list
   bot.command("history", async (ctx) => {
     try {
       const sessions = await api.listSessions()
       if (sessions.length === 0) {
-        await ctx.reply("No tienes sesiones previas.")
+        await ctx.reply("No previous sessions.")
         return
       }
       const lines = sessions
         .slice(0, 10)
-        .map((s, i) => `${i + 1}. ${s.title || "Sin título"} — ${new Date(s.time.updated).toLocaleDateString()}`)
-      await ctx.reply(`Últimas sesiones:\n\n${lines.join("\n")}`)
+        .map((s, i) => `${i + 1}. ${s.title || "Untitled"} — ${new Date(s.time.updated).toLocaleDateString("en-US")}`)
+      await ctx.reply(`Recent sessions:\n\n${lines.join("\n")}`)
     } catch {
-      await ctx.reply("Error al cargar historial.")
+      await ctx.reply("Error loading history.")
     }
   })
 
   // /help
   bot.command("help", async (ctx) => {
     await ctx.reply(
-      `*OpenFin — Comandos*\n\n` +
-        `/new — Nueva conversación\n` +
-        `/accounts — Ver cuentas\n` +
-        `/budgets — Ver presupuestos\n` +
-        `/goals — Ver metas\n` +
-        `/model — Cambiar modelo de IA\n` +
-        `/history — Sesiones anteriores\n` +
-        `/abort — Cancelar respuesta en curso\n` +
-        `/help — Esta ayuda`,
+      `*OpenFin — Commands*\n\n` +
+        `/new — New conversation\n` +
+        `/accounts — View accounts\n` +
+        `/budgets — View budgets\n` +
+        `/goals — View goals\n` +
+        `/model — Change AI model\n` +
+        `/history — Previous sessions\n` +
+        `/abort — Cancel current response\n` +
+        `/help — This help`,
       { parse_mode: "Markdown" },
     )
   })

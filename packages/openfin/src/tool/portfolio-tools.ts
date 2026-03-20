@@ -34,12 +34,12 @@ export const AddPositionTool = Tool.define("add_position", {
     const pos = Profile.addPosition({ symbol, quantity, avg_cost, currency, asset_type, name, notes })
     const costBasis = pos.quantity * pos.avg_cost
     return {
-      title: `Posición: ${pos.symbol}`,
+      title: `Position: ${pos.symbol}`,
       output: [
-        `✓ ${pos.symbol} — ${pos.quantity} unidades @ ${fmt(pos.avg_cost, pos.currency)} c/u`,
-        `Costo total: ${fmt(costBasis, pos.currency)}`,
+        `✓ ${pos.symbol} — ${pos.quantity} units @ ${fmt(pos.avg_cost, pos.currency)} each`,
+        `Total cost: ${fmt(costBasis, pos.currency)}`,
         pos.quantity !== quantity
-          ? `(posición existente — nuevo promedio calculado)`
+          ? `(existing position — new average calculated)`
           : "",
       ]
         .filter(Boolean)
@@ -64,30 +64,30 @@ export const ListPortfolioTool = Tool.define("list_portfolio", {
 
     if (positions.length === 0) {
       return {
-        title: "Portfolio vacío",
-        output: "No hay posiciones registradas en el portafolio.",
+        title: "Empty portfolio",
+        output: "No positions recorded in the portfolio.",
       }
     }
 
-    const lines: string[] = ["PORTAFOLIO DE INVERSIONES", "─".repeat(48)]
+    const lines: string[] = ["INVESTMENT PORTFOLIO", "─".repeat(48)]
     let totalCost = 0
 
     for (const pos of positions) {
       const costBasis = pos.quantity * pos.avg_cost
       totalCost += costBasis
       lines.push(
-        `${pos.symbol.padEnd(10)} ${pos.quantity} uds @ ${fmt(pos.avg_cost, pos.currency)} = ${fmt(costBasis, pos.currency)}`,
+        `${pos.symbol.padEnd(10)} ${pos.quantity} units @ ${fmt(pos.avg_cost, pos.currency)} = ${fmt(costBasis, pos.currency)}`,
       )
       if (pos.name) lines.push(`  ${pos.name}`)
-      if (pos.notes) lines.push(`  Nota: ${pos.notes}`)
+      if (pos.notes) lines.push(`  Note: ${pos.notes}`)
       lines.push(`  id: ${pos.id}`)
     }
 
     lines.push("─".repeat(48))
-    lines.push(`${positions.length} posiciones | Costo total: ~${fmt(totalCost)} (sin conversión FX)`)
+    lines.push(`${positions.length} positions | Total cost: ~${fmt(totalCost)} (no FX conversion)`)
 
     return {
-      title: `Portafolio (${positions.length} posiciones)`,
+      title: `Portfolio (${positions.length} positions)`,
       output: lines.join("\n"),
       metadata: { count: positions.length },
     }
@@ -114,13 +114,13 @@ export const UpdatePositionTool = Tool.define("update_position", {
     const pos = Profile.updatePosition(id, { quantity, avg_cost, name, notes })
     if (!pos) {
       return {
-        title: "Posición no encontrada",
-        output: `No existe ninguna posición con ID "${id}".`,
+        title: "Position not found",
+        output: `No position found with ID "${id}".`,
       }
     }
     return {
-      title: `Actualizado: ${pos.symbol}`,
-      output: `✓ ${pos.symbol} actualizado — ${pos.quantity} uds @ ${fmt(pos.avg_cost, pos.currency)} c/u`,
+      title: `Updated: ${pos.symbol}`,
+      output: `✓ ${pos.symbol} updated — ${pos.quantity} units @ ${fmt(pos.avg_cost, pos.currency)} each`,
       metadata: { id: pos.id, symbol: pos.symbol },
     }
   },
@@ -143,14 +143,14 @@ export const ClosePositionTool = Tool.define("close_position", {
     const pos = positions.find((p) => p.id === id)
     if (!pos) {
       return {
-        title: "Posición no encontrada",
-        output: `No existe ninguna posición con ID "${id}".`,
+        title: "Position not found",
+        output: `No position found with ID "${id}".`,
       }
     }
     Profile.closePosition(id)
     return {
-      title: `Cerrada: ${pos.symbol}`,
-      output: `✓ Posición ${pos.symbol} (${pos.quantity} uds) eliminada del portafolio.`,
+      title: `Closed: ${pos.symbol}`,
+      output: `✓ Position ${pos.symbol} (${pos.quantity} units) removed from portfolio.`,
     }
   },
 })

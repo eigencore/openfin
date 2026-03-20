@@ -4,7 +4,7 @@ import { Profile } from "../profile/profile"
 import { normalizeCategory, EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "../profile/categories"
 
 const fmt = (n: number, currency = "MXN") =>
-  `$${n.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
+  `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`
 
 // ── upsert_account ────────────────────────────────────────────────────────────
 
@@ -35,11 +35,11 @@ export const UpsertAccountTool = Tool.define("upsert_account", {
     const account = Profile.upsertAccount({ name, type, balance, credit_limit, currency, institution, notes })
     const balanceLine =
       account.type === "credit_card"
-        ? `Saldo adeudado: ${fmt(Math.abs(account.balance), account.currency)}${account.credit_limit ? ` / límite ${fmt(account.credit_limit, account.currency)}` : ""}`
-        : `Saldo: ${fmt(account.balance, account.currency)}`
+        ? `Balance owed: ${fmt(Math.abs(account.balance), account.currency)}${account.credit_limit ? ` / limit ${fmt(account.credit_limit, account.currency)}` : ""}`
+        : `Balance: ${fmt(account.balance, account.currency)}`
     return {
-      title: `Cuenta: ${name}`,
-      output: `Cuenta "${name}" guardada. ${balanceLine}`,
+      title: `Account: ${name}`,
+      output: `Account "${name}" saved. ${balanceLine}`,
     }
   },
 })
@@ -66,11 +66,11 @@ export const UpsertDebtTool = Tool.define("upsert_debt", {
 
   async execute({ name, type, balance, interest_rate, min_payment, due_day, currency, institution, notes }) {
     const debt = Profile.upsertDebt({ name, type, balance, interest_rate, min_payment, due_day, currency, institution, notes })
-    const parts = [`Deuda "${name}" guardada. Saldo: ${fmt(debt.balance, debt.currency)}`]
+    const parts = [`Debt "${name}" saved. Balance: ${fmt(debt.balance, debt.currency)}`]
     if (debt.interest_rate) parts.push(`${debt.interest_rate}% APR`)
-    if (debt.due_day) parts.push(`vence día ${debt.due_day}`)
+    if (debt.due_day) parts.push(`due day ${debt.due_day}`)
     return {
-      title: `Deuda: ${name}`,
+      title: `Debt: ${name}`,
       output: parts.join(" · "),
     }
   },
@@ -94,8 +94,8 @@ export const UpsertBudgetTool = Tool.define("upsert_budget", {
   async execute({ category, amount, period, currency, notes }) {
     const budget = Profile.upsertBudget({ category: normalizeCategory(category), amount, period, currency, notes })
     return {
-      title: `Presupuesto: ${category}`,
-      output: `Presupuesto "${category}" guardado: ${fmt(budget.amount, budget.currency)} / ${budget.period === "monthly" ? "mes" : "semana"}`,
+      title: `Budget: ${category}`,
+      output: `Budget "${category}" saved: ${fmt(budget.amount, budget.currency)} / ${budget.period === "monthly" ? "month" : "week"}`,
     }
   },
 })
@@ -124,11 +124,11 @@ export const UpsertGoalTool = Tool.define("upsert_goal", {
     const goal = Profile.upsertGoal({ name, target_amount, current_amount, target_date: targetTs, currency, notes })
     const pct = Math.round((goal.current_amount / goal.target_amount) * 100)
     const datePart = goal.target_date
-      ? ` · meta: ${new Date(goal.target_date).toLocaleDateString("es-MX", { month: "short", year: "numeric" })}`
+      ? ` · target: ${new Date(goal.target_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
       : ""
     return {
-      title: `Meta: ${name}`,
-      output: `Meta "${name}" guardada. Progreso: ${fmt(goal.current_amount, goal.currency)} / ${fmt(goal.target_amount, goal.currency)} (${pct}%)${datePart}`,
+      title: `Goal: ${name}`,
+      output: `Goal "${name}" saved. Progress: ${fmt(goal.current_amount, goal.currency)} / ${fmt(goal.target_amount, goal.currency)} (${pct}%)${datePart}`,
     }
   },
 })
@@ -196,14 +196,14 @@ export const LogTransactionTool = Tool.define("log_transaction", {
       currency,
     })
 
-    const dateStr = new Date(tx.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
-    const direction = type === "expense" ? "Gasto" : "Ingreso"
+    const dateStr = new Date(tx.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })
+    const direction = type === "expense" ? "Expense" : "Income"
 
     const parts = [
-      `${direction} registrado: ${fmt(tx.amount, tx.currency)} en ${category} — "${description}" (${dateStr})`,
+      `${direction} logged: ${fmt(tx.amount, tx.currency)} in ${category} — "${description}" (${dateStr})`,
     ]
     if (resolvedAccountName && newAccountBalance !== undefined) {
-      parts.push(`Nuevo saldo de "${resolvedAccountName}": ${fmt(newAccountBalance, tx.currency)}`)
+      parts.push(`New balance for "${resolvedAccountName}": ${fmt(newAccountBalance, tx.currency)}`)
     }
 
     return {
@@ -237,8 +237,8 @@ export const AnalyzeExpensesTool = Tool.define("analyze_expenses", {
 
     if (!results.length) {
       return {
-        title: "Análisis de gastos",
-        output: `No hay ${effectiveType === "expense" ? "gastos" : "ingresos"} registrados para ${period}.`,
+        title: "Expense analysis",
+        output: `No ${effectiveType === "expense" ? "expenses" : "income"} recorded for ${period}.`,
       }
     }
 
@@ -246,26 +246,26 @@ export const AnalyzeExpensesTool = Tool.define("analyze_expenses", {
     const currency = results[0]?.currency ?? "MXN"
 
     const periodLabel: Record<string, string> = {
-      this_month: "este mes",
-      last_month: "el mes pasado",
-      last_30_days: "últimos 30 días",
-      this_year: "este año",
+      this_month: "this month",
+      last_month: "last month",
+      last_30_days: "last 30 days",
+      this_year: "this year",
     }
 
     const lines = [
-      `${effectiveType === "expense" ? "Gastos" : "Ingresos"} — ${periodLabel[period]}`,
+      `${effectiveType === "expense" ? "Expenses" : "Income"} — ${periodLabel[period]}`,
       "",
     ]
 
     for (const r of results) {
       const share = Math.round((r.total / total) * 100)
-      lines.push(`  ${r.category}: ${fmt(r.total, r.currency)} (${share}%, ${r.count} transacciones)`)
+      lines.push(`  ${r.category}: ${fmt(r.total, r.currency)} (${share}%, ${r.count} transactions)`)
     }
 
     lines.push("", `  Total: ${fmt(total, currency)}`)
 
     return {
-      title: `Análisis: ${periodLabel[period]}`,
+      title: `Analysis: ${periodLabel[period]}`,
       output: lines.join("\n"),
     }
   },
@@ -283,7 +283,7 @@ export const ListAccountsTool = Tool.define("list_accounts", {
   async execute() {
     const accounts = Profile.listAccounts()
     if (!accounts.length) {
-      return { title: "Cuentas", output: "No hay cuentas registradas." }
+      return { title: "Accounts", output: "No accounts registered." }
     }
     const regular = accounts.filter((a) => a.type !== "credit_card")
     const cards = accounts.filter((a) => a.type === "credit_card")
@@ -295,24 +295,24 @@ export const ListAccountsTool = Tool.define("list_accounts", {
         const label = a.institution ? `${a.name} (${a.institution})` : a.name
         lines.push(`  ${label} [${a.type}]: ${fmt(a.balance, a.currency)}`)
       }
-      if (regular.length > 1) lines.push(`  ─────\n  Total activos: ${fmt(totalAssets)}`)
+      if (regular.length > 1) lines.push(`  ─────\n  Total assets: ${fmt(totalAssets)}`)
     }
 
     if (cards.length) {
       if (lines.length) lines.push("")
-      lines.push("  Tarjetas de crédito:")
+      lines.push("  Credit cards:")
       const totalOwed = cards.reduce((s, a) => s + Math.abs(a.balance), 0)
       for (const a of cards) {
         const label = a.institution ? `${a.name} (${a.institution})` : a.name
         const owed = Math.abs(a.balance)
-        const limitPart = a.credit_limit ? ` / límite ${fmt(a.credit_limit, a.currency)}` : ""
-        const availPart = a.credit_limit ? ` · disponible ${fmt(a.credit_limit - owed, a.currency)}` : ""
-        lines.push(`  ${label}: ${fmt(owed, a.currency)} adeudado${limitPart}${availPart}`)
+        const limitPart = a.credit_limit ? ` / limit ${fmt(a.credit_limit, a.currency)}` : ""
+        const availPart = a.credit_limit ? ` · available ${fmt(a.credit_limit - owed, a.currency)}` : ""
+        lines.push(`  ${label}: ${fmt(owed, a.currency)} owed${limitPart}${availPart}`)
       }
-      if (cards.length > 1) lines.push(`  ─────\n  Total adeudado en tarjetas: ${fmt(totalOwed)}`)
+      if (cards.length > 1) lines.push(`  ─────\n  Total owed on cards: ${fmt(totalOwed)}`)
     }
 
-    return { title: "Cuentas", output: lines.join("\n") }
+    return { title: "Accounts", output: lines.join("\n") }
   },
 })
 
@@ -328,18 +328,18 @@ export const ListDebtsTool = Tool.define("list_debts", {
   async execute() {
     const debts = Profile.listDebts()
     if (!debts.length) {
-      return { title: "Deudas", output: "No hay deudas registradas." }
+      return { title: "Debts", output: "No debts registered." }
     }
     const total = debts.reduce((s, d) => s + d.balance, 0)
     const lines = debts.map((d) => {
       const parts = [`  ${d.name} [${d.type}]: ${fmt(d.balance, d.currency)}`]
       if (d.interest_rate) parts.push(`${d.interest_rate}% APR`)
-      if (d.min_payment) parts.push(`mín ${fmt(d.min_payment, d.currency)}`)
-      if (d.due_day) parts.push(`vence día ${d.due_day}`)
+      if (d.min_payment) parts.push(`min ${fmt(d.min_payment, d.currency)}`)
+      if (d.due_day) parts.push(`due day ${d.due_day}`)
       return parts.join(" · ")
     })
-    if (debts.length > 1) lines.push(`  ─────\n  Total deuda: ${fmt(total)}`)
-    return { title: "Deudas", output: lines.join("\n") }
+    if (debts.length > 1) lines.push(`  ─────\n  Total debt: ${fmt(total)}`)
+    return { title: "Debts", output: lines.join("\n") }
   },
 })
 
@@ -355,17 +355,17 @@ export const ListBudgetsTool = Tool.define("list_budgets", {
   async execute() {
     const budgets = Profile.listBudgets()
     if (!budgets.length) {
-      return { title: "Presupuestos", output: "No hay presupuestos registrados." }
+      return { title: "Budgets", output: "No budgets registered." }
     }
     const spent = Profile.currentMonthExpensesByCategory()
     const lines = budgets.map((b) => {
       const used = spent.get(b.category.toLowerCase()) ?? 0
       const pct = b.amount === 0 ? 0 : Math.round((used / b.amount) * 100)
       const status = pct >= 100 ? "🔴" : pct >= 80 ? "⚠️ " : "✅"
-      const period = b.period === "monthly" ? "mes" : "semana"
+      const period = b.period === "monthly" ? "month" : "week"
       return `  ${status} ${b.category}: ${fmt(used, b.currency)} / ${fmt(b.amount, b.currency)} (${pct}%) · ${period}`
     })
-    return { title: "Presupuestos", output: lines.join("\n") }
+    return { title: "Budgets", output: lines.join("\n") }
   },
 })
 
@@ -381,17 +381,17 @@ export const ListGoalsTool = Tool.define("list_goals", {
   async execute() {
     const goals = Profile.listGoals()
     if (!goals.length) {
-      return { title: "Metas", output: "No hay metas registradas." }
+      return { title: "Goals", output: "No goals registered." }
     }
     const lines = goals.map((g) => {
       const pct = g.target_amount === 0 ? 100 : Math.round((g.current_amount / g.target_amount) * 100)
       const emoji = pct >= 100 ? "✅" : "🎯"
       const datePart = g.target_date
-        ? ` · meta: ${new Date(g.target_date).toLocaleDateString("es-MX", { month: "short", year: "numeric" })}`
+        ? ` · target: ${new Date(g.target_date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`
         : ""
       return `  ${emoji} ${g.name}: ${fmt(g.current_amount, g.currency)} / ${fmt(g.target_amount, g.currency)} (${pct}%)${datePart}`
     })
-    return { title: "Metas", output: lines.join("\n") }
+    return { title: "Goals", output: lines.join("\n") }
   },
 })
 
@@ -431,16 +431,16 @@ export const ListTransactionsTool = Tool.define("list_transactions", {
     })
 
     if (!txs.length) {
-      return { title: "Transacciones", output: "No se encontraron transacciones con esos filtros." }
+      return { title: "Transactions", output: "No transactions found with those filters." }
     }
 
     const lines = txs.map((tx) => {
-      const dateStr = new Date(tx.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
+      const dateStr = new Date(tx.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })
       const dir = tx.type === "expense" ? "↓" : "↑"
       return `  ${dateStr} ${dir} ${fmt(tx.amount, tx.currency)} · ${tx.category} — ${tx.description}`
     })
 
-    return { title: `Transacciones (${txs.length})`, output: lines.join("\n") }
+    return { title: `Transactions (${txs.length})`, output: lines.join("\n") }
   },
 })
 
@@ -478,7 +478,7 @@ export const PayDebtTool = Tool.define("pay_debt", {
     // Pay debt
     const result = Profile.payDebt(name, amount)
     if (!result) {
-      return { title: "Deuda no encontrada", output: `No se encontró ninguna deuda con el nombre "${name}".` }
+      return { title: "Debt not found", output: `No debt found with the name "${name}".` }
     }
 
     // Debit account if resolved — log as a transaction so balance updates and history is kept
@@ -487,26 +487,26 @@ export const PayDebtTool = Tool.define("pay_debt", {
       const { newAccountBalance } = Profile.logTransaction({
         amount: result.paid,
         type: "expense",
-        category: "Pago de deuda",
-        description: `Pago a ${name}`,
+        category: "Debt Payment",
+        description: `Payment to ${name}`,
         account_id,
         currency: result.debt.currency,
       })
       if (newAccountBalance !== undefined) {
-        accountNote = `\nNuevo saldo de "${resolvedAccountName}": ${fmt(newAccountBalance, result.debt.currency)}`
+        accountNote = `\nNew balance for "${resolvedAccountName}": ${fmt(newAccountBalance, result.debt.currency)}`
       }
     }
 
     const { debt, paid, fullyPaid } = result
     const lines = [
-      `Pago de ${fmt(paid, debt.currency)} aplicado a "${name}".`,
+      `Payment of ${fmt(paid, debt.currency)} applied to "${name}".`,
       fullyPaid
-        ? `🎉 ¡Deuda liquidada! Saldo: $0.00`
-        : `Saldo restante: ${fmt(debt.balance, debt.currency)}`,
+        ? `🎉 Debt fully paid off! Balance: $0.00`
+        : `Remaining balance: ${fmt(debt.balance, debt.currency)}`,
     ]
     if (accountNote) lines.push(accountNote)
 
-    return { title: `Pago: ${name}`, output: lines.join("\n") }
+    return { title: `Payment: ${name}`, output: lines.join("\n") }
   },
 })
 
@@ -543,7 +543,7 @@ export const ContributeToGoalTool = Tool.define("contribute_to_goal", {
 
     const result = Profile.contributeToGoal(name, amount, account_id)
     if (!result) {
-      return { title: "Meta no encontrada", output: `No se encontró ninguna meta con el nombre "${name}".` }
+      return { title: "Goal not found", output: `No goal found with the name "${name}".` }
     }
 
     const { goal, newAccountBalance } = result
@@ -551,16 +551,16 @@ export const ContributeToGoalTool = Tool.define("contribute_to_goal", {
     const reached = goal.current_amount >= goal.target_amount
 
     const lines = [
-      `Aporte de ${fmt(amount)} registrado en "${name}".`,
+      `Contribution of ${fmt(amount)} recorded for "${name}".`,
       reached
-        ? `🎉 ¡Meta alcanzada! ${fmt(goal.current_amount, goal.currency)} / ${fmt(goal.target_amount, goal.currency)}`
-        : `Progreso: ${fmt(goal.current_amount, goal.currency)} / ${fmt(goal.target_amount, goal.currency)} (${pct}%)`,
+        ? `🎉 Goal reached! ${fmt(goal.current_amount, goal.currency)} / ${fmt(goal.target_amount, goal.currency)}`
+        : `Progress: ${fmt(goal.current_amount, goal.currency)} / ${fmt(goal.target_amount, goal.currency)} (${pct}%)`,
     ]
     if (resolvedAccountName && newAccountBalance !== undefined) {
-      lines.push(`Nuevo saldo de "${resolvedAccountName}": ${fmt(newAccountBalance)}`)
+      lines.push(`New balance for "${resolvedAccountName}": ${fmt(newAccountBalance)}`)
     }
 
-    return { title: `Aporte: ${name}`, output: lines.join("\n") }
+    return { title: `Contribution: ${name}`, output: lines.join("\n") }
   },
 })
 
@@ -581,7 +581,7 @@ export const TransferBetweenAccountsTool = Tool.define("transfer_between_account
 
   async execute({ from_account, to_account, amount, description }) {
     if (from_account.toLowerCase() === to_account.toLowerCase()) {
-      return { title: "Transferencia inválida", output: "La cuenta origen y destino no pueden ser la misma." }
+      return { title: "Invalid transfer", output: "Source and destination accounts cannot be the same." }
     }
 
     const result = Profile.transferBetweenAccounts(from_account, to_account, amount, description)
@@ -593,18 +593,18 @@ export const TransferBetweenAccountsTool = Tool.define("transfer_between_account
         (n) => !accounts.some((a) => a.name.toLowerCase() === n.toLowerCase()),
       )
       return {
-        title: "Cuenta no encontrada",
-        output: `No se encontró la cuenta "${missing}". Cuentas disponibles: ${names || "ninguna"}.`,
+        title: "Account not found",
+        output: `Account "${missing}" not found. Available accounts: ${names || "none"}.`,
       }
     }
 
     const { fromBalance, toBalance } = result
     return {
-      title: `Transferencia: ${from_account} → ${to_account}`,
+      title: `Transfer: ${from_account} → ${to_account}`,
       output: [
-        `Transferencia de ${fmt(amount)} realizada.`,
-        `  "${from_account}": saldo nuevo ${fmt(fromBalance)}`,
-        `  "${to_account}": saldo nuevo ${fmt(toBalance)}`,
+        `Transfer of ${fmt(amount)} completed.`,
+        `  "${from_account}": new balance ${fmt(fromBalance)}`,
+        `  "${to_account}": new balance ${fmt(toBalance)}`,
       ].join("\n"),
     }
   },
@@ -625,9 +625,9 @@ export const DeleteAccountTool = Tool.define("delete_account", {
   async execute({ name }) {
     const deleted = Profile.deleteAccount(name)
     if (!deleted) {
-      return { title: `Cuenta no encontrada`, output: `No se encontró ninguna cuenta con el nombre "${name}".` }
+      return { title: `Account not found`, output: `No account found with the name "${name}".` }
     }
-    return { title: `Cuenta eliminada`, output: `Cuenta "${name}" eliminada permanentemente.` }
+    return { title: `Account deleted`, output: `Account "${name}" permanently deleted.` }
   },
 })
 
@@ -646,9 +646,9 @@ export const DeleteDebtTool = Tool.define("delete_debt", {
   async execute({ name }) {
     const deleted = Profile.deleteDebt(name)
     if (!deleted) {
-      return { title: `Deuda no encontrada`, output: `No se encontró ninguna deuda con el nombre "${name}".` }
+      return { title: `Debt not found`, output: `No debt found with the name "${name}".` }
     }
-    return { title: `Deuda eliminada`, output: `Deuda "${name}" eliminada permanentemente.` }
+    return { title: `Debt deleted`, output: `Debt "${name}" permanently deleted.` }
   },
 })
 
@@ -666,9 +666,9 @@ export const DeleteBudgetTool = Tool.define("delete_budget", {
   async execute({ category }) {
     const deleted = Profile.deleteBudget(category)
     if (!deleted) {
-      return { title: `Presupuesto no encontrado`, output: `No se encontró ningún presupuesto para la categoría "${category}".` }
+      return { title: `Budget not found`, output: `No budget found for category "${category}".` }
     }
-    return { title: `Presupuesto eliminado`, output: `Presupuesto de "${category}" eliminado permanentemente.` }
+    return { title: `Budget deleted`, output: `Budget for "${category}" permanently deleted.` }
   },
 })
 
@@ -686,9 +686,9 @@ export const DeleteGoalTool = Tool.define("delete_goal", {
   async execute({ name }) {
     const deleted = Profile.deleteGoal(name)
     if (!deleted) {
-      return { title: `Meta no encontrada`, output: `No se encontró ninguna meta con el nombre "${name}".` }
+      return { title: `Goal not found`, output: `No goal found with the name "${name}".` }
     }
-    return { title: `Meta eliminada`, output: `Meta "${name}" eliminada permanentemente.` }
+    return { title: `Goal deleted`, output: `Goal "${name}" permanently deleted.` }
   },
 })
 
@@ -714,28 +714,28 @@ export const GetNetWorthTool = Tool.define("get_net_worth", {
     const history = Profile.getNetWorthHistory(history_days ?? 30)
 
     const lines = [
-      `Patrimonio neto actual: ${fmt(snapshot.net_worth, snapshot.currency)}`,
-      `  Activos totales: ${fmt(snapshot.assets, snapshot.currency)}`,
-      `  Deudas totales:  ${fmt(snapshot.debts, snapshot.currency)}`,
+      `Current net worth: ${fmt(snapshot.net_worth, snapshot.currency)}`,
+      `  Total assets: ${fmt(snapshot.assets, snapshot.currency)}`,
+      `  Total debts:  ${fmt(snapshot.debts, snapshot.currency)}`,
     ]
 
     if (history.length >= 2) {
       const oldest = history[history.length - 1]!
       const delta = snapshot.net_worth - oldest.net_worth
       const sign = delta >= 0 ? "+" : ""
-      const dateStr = new Date(oldest.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
-      lines.push(``, `Cambio vs ${dateStr}: ${sign}${fmt(delta, snapshot.currency)}`)
+      const dateStr = new Date(oldest.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })
+      lines.push(``, `Change vs ${dateStr}: ${sign}${fmt(delta, snapshot.currency)}`)
 
       // Show last 5 snapshots as a mini trend
       const recent = history.slice(0, 5).reverse()
-      lines.push(``, `Tendencia reciente:`)
+      lines.push(``, `Recent trend:`)
       for (const s of recent) {
-        const d = new Date(s.date).toLocaleDateString("es-MX", { day: "2-digit", month: "short" })
+        const d = new Date(s.date).toLocaleDateString("en-US", { day: "2-digit", month: "short" })
         lines.push(`  ${d}: ${fmt(s.net_worth, s.currency)}`)
       }
     }
 
-    return { title: "Patrimonio neto", output: lines.join("\n") }
+    return { title: "Net worth", output: lines.join("\n") }
   },
 })
 
@@ -753,8 +753,8 @@ export const CheckAlertsTool = Tool.define("check_alerts", {
 
     if (!alerts.length) {
       return {
-        title: "Alertas financieras",
-        output: "Sin alertas. Todo en orden.",
+        title: "Financial alerts",
+        output: "No alerts. Everything looks good.",
       }
     }
 
@@ -764,17 +764,17 @@ export const CheckAlertsTool = Tool.define("check_alerts", {
     const lines: string[] = []
 
     if (critical.length) {
-      lines.push("🔴 CRÍTICO")
+      lines.push("🔴 CRITICAL")
       for (const a of critical) lines.push(`  • ${a.message}`)
     }
 
     if (warnings.length) {
       if (lines.length) lines.push("")
-      lines.push("⚠️  ADVERTENCIAS")
+      lines.push("⚠️  WARNINGS")
       for (const a of warnings) lines.push(`  • ${a.message}`)
     }
 
-    return { title: `Alertas (${alerts.length})`, output: lines.join("\n") }
+    return { title: `Alerts (${alerts.length})`, output: lines.join("\n") }
   },
 })
 
@@ -831,13 +831,13 @@ export const CreateRecurringTool = Tool.define("create_recurring", {
       notes,
     })
 
-    const nextStr = new Date(rec.next_due).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
-    const freqLabel: Record<string, string> = { daily: "diario", weekly: "semanal", monthly: "mensual", yearly: "anual" }
-    const intervalLabel = rec.interval > 1 ? ` cada ${rec.interval}` : ""
+    const nextStr = new Date(rec.next_due).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" })
+    const freqLabel: Record<string, string> = { daily: "daily", weekly: "weekly", monthly: "monthly", yearly: "yearly" }
+    const intervalLabel = rec.interval > 1 ? ` every ${rec.interval}` : ""
 
     return {
-      title: `Recurrente: ${title}`,
-      output: `Recurrente "${title}" creado: ${fmt(amount, rec.currency)} / ${freqLabel[frequency]}${intervalLabel} — próximo: ${nextStr}`,
+      title: `Recurring: ${title}`,
+      output: `Recurring "${title}" created: ${fmt(amount, rec.currency)} / ${freqLabel[frequency]}${intervalLabel} — next: ${nextStr}`,
     }
   },
 })
@@ -854,32 +854,32 @@ export const ListRecurringTool = Tool.define("list_recurring", {
   async execute() {
     const recs = Profile.listRecurring()
     if (!recs.length) {
-      return { title: "Recurrentes", output: "No hay transacciones recurrentes configuradas." }
+      return { title: "Recurring", output: "No recurring transactions configured." }
     }
 
     const active = recs.filter((r) => r.active)
     const paused = recs.filter((r) => !r.active)
 
     const formatRec = (r: (typeof recs)[number]) => {
-      const nextStr = new Date(r.next_due).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
+      const nextStr = new Date(r.next_due).toLocaleDateString("en-US", { day: "2-digit", month: "short", year: "numeric" })
       const dir = r.type === "expense" ? "↓" : "↑"
-      const freqLabel: Record<string, string> = { daily: "diario", weekly: "semanal", monthly: "mensual", yearly: "anual" }
+      const freqLabel: Record<string, string> = { daily: "daily", weekly: "weekly", monthly: "monthly", yearly: "yearly" }
       const intervalPart = r.interval > 1 ? ` ×${r.interval}` : ""
-      return `  ${dir} ${r.title}: ${fmt(r.amount, r.currency)} · ${freqLabel[r.frequency]}${intervalPart} · próximo ${nextStr}`
+      return `  ${dir} ${r.title}: ${fmt(r.amount, r.currency)} · ${freqLabel[r.frequency]}${intervalPart} · next ${nextStr}`
     }
 
     const lines: string[] = []
     if (active.length) {
-      lines.push("Activos:")
+      lines.push("Active:")
       lines.push(...active.map(formatRec))
     }
     if (paused.length) {
       if (lines.length) lines.push("")
-      lines.push("Pausados:")
+      lines.push("Paused:")
       lines.push(...paused.map(formatRec))
     }
 
-    return { title: `Recurrentes (${recs.length})`, output: lines.join("\n") }
+    return { title: `Recurring (${recs.length})`, output: lines.join("\n") }
   },
 })
 
@@ -900,12 +900,12 @@ export const PauseRecurringTool = Tool.define("pause_recurring", {
     const recs = Profile.listRecurring()
     const found = recs.find((r) => r.title.toLowerCase() === title.toLowerCase())
     if (!found) {
-      return { title: "No encontrado", output: `No se encontró ninguna recurrente con el nombre "${title}".` }
+      return { title: "Not found", output: `No recurring transaction found with the name "${title}".` }
     }
     Profile.setRecurringActive(found.id, active)
     return {
-      title: `Recurrente: ${title}`,
-      output: active ? `"${title}" reanudado.` : `"${title}" pausado — no se auto-registrará hasta que lo reactives.`,
+      title: `Recurring: ${title}`,
+      output: active ? `"${title}" resumed.` : `"${title}" paused — will not auto-log until resumed.`,
     }
   },
 })
@@ -925,10 +925,10 @@ export const DeleteRecurringTool = Tool.define("delete_recurring", {
     const recs = Profile.listRecurring()
     const found = recs.find((r) => r.title.toLowerCase() === title.toLowerCase())
     if (!found) {
-      return { title: "No encontrado", output: `No se encontró ninguna recurrente con el nombre "${title}".` }
+      return { title: "Not found", output: `No recurring transaction found with the name "${title}".` }
     }
     Profile.deleteRecurring(found.id)
-    return { title: `Recurrente eliminado`, output: `"${title}" eliminado permanentemente.` }
+    return { title: `Recurring deleted`, output: `"${title}" permanently deleted.` }
   },
 })
 
