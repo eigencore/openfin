@@ -48,8 +48,23 @@ for (const pkg of platforms) {
 }
 
 // ── 2. Publish main @eigencore/openfin package ────────────────────────────
-// Stamp the version from OPENFIN_VERSION into package.json before publishing
-await $`npm version ${version} --no-git-tag-version --allow-same-version`
+// Write a clean package.json for publishing — strip dev/runtime deps (baked
+// into the binary) and catalog: references that npm doesn't understand.
+const srcPkg = JSON.parse(fs.readFileSync("package.json", "utf8"))
+const publishPkg = {
+  name: srcPkg.name,
+  version,
+  description: srcPkg.description,
+  license: srcPkg.license,
+  repository: srcPkg.repository,
+  homepage: srcPkg.homepage,
+  bin: srcPkg.bin,
+  files: srcPkg.files,
+  optionalDependencies: Object.fromEntries(
+    Object.keys(srcPkg.optionalDependencies).map((k) => [k, version])
+  ),
+}
+fs.writeFileSync("package.json", JSON.stringify(publishPkg, null, 2))
 console.log("\nPublishing @eigencore/openfin to npm...")
 await $`npm publish . --access public`
 
