@@ -39,7 +39,7 @@ export interface ModelInfo {
 }
 
 export interface DashboardData {
-  netWorth: { assets: number; debts: number; net_worth: number; currency: string; delta?: number }
+  netWorth: { assets: number; debts: number; net_worth: number; currency: string; delta?: number; deltaDate?: number }
   netWorthHistory: { date: number; value: number }[]
   topExpenses: { category: string; amount: number }[]
   income: { amount: number; currency: string; notes: string | null } | null

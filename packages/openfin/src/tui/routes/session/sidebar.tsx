@@ -1,11 +1,34 @@
-import { createMemo, Show } from "solid-js"
+import { createMemo, createResource, For, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
-import { useKV } from "../../context/kv"
 import { Installation } from "../../../installation"
+import { api } from "../../context/sdk"
 
 function formatDate(ms: number): string {
   return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
+
+function fmt(n: number): string {
+  return `$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+}
+
+function formatDeltaLabel(deltaDate?: number): string {
+  if (deltaDate === undefined) return "vs prev"
+  const days = Math.floor((Date.now() - deltaDate) / 86_400_000)
+  if (days === 0) return "vs today"
+  if (days === 1) return "vs yesterday"
+  if (days < 7) return `vs ${days}d ago`
+  return `vs ${new Date(deltaDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+}
+
+function progressBar(current: number, target: number, width = 8): string {
+  const ratio = Math.min(1, target === 0 ? 0 : current / target)
+  const filled = Math.round(ratio * width)
+  return "█".repeat(filled) + "░".repeat(width - filled)
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s
 }
 
 // Known context window limits (in tokens) for supported models
@@ -26,12 +49,10 @@ interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
   const sync = useSync()
-  const kv = useKV()
 
   const session = createMemo(() => sync.store.sessions.find((s) => s.id === props.sessionID))
   const title = createMemo(() => session()?.title ?? "New Session")
   const messages = createMemo(() => sync.store.messages[props.sessionID] ?? [])
-
   const messageCount = createMemo(() => messages().length)
 
   const context = createMemo(() => {
@@ -49,12 +70,12 @@ export function Sidebar(props: SidebarProps) {
     return s && !s.done
   })
 
-  const directory = process.cwd()
-  const dirParts = directory.split("/")
-  const dirParent = dirParts.slice(0, -1).join("/") + "/"
-  const dirName = dirParts.at(-1) ?? directory
+  const [dashboard] = createResource(() => api.getDashboard())
 
-  const [gettingStartedDismissed, setGettingStartedDismissed] = kv.signal("dismissed_getting_started", false)
+  const netWorth = createMemo(() => dashboard()?.netWorth ?? null)
+  const budgets = createMemo(() => dashboard()?.budgets ?? [])
+  const alerts = createMemo(() => dashboard()?.alerts ?? [])
+  const upcoming = createMemo(() => (dashboard()?.upcoming ?? []).slice(0, 3))
 
   return (
     <Show when={session()}>
@@ -109,52 +130,94 @@ export function Sidebar(props: SidebarProps) {
                 <text fg={theme().textMuted}>Created {formatDate(session()!.time.created)}</text>
               </box>
             </Show>
+
+            {/* Financial snapshot */}
+            <Show when={netWorth() !== null}>
+              <box>
+                <text fg={theme().accent}>▌ Net Worth</text>
+                <text>
+                  <span style={{ fg: netWorth()!.net_worth >= 0 ? theme().success : theme().error }}>
+                    {fmt(netWorth()!.net_worth)}
+                  </span>
+                  <Show when={netWorth()!.delta !== undefined}>
+                    <span style={{ fg: theme().textMuted }}>{"  "}</span>
+                    <span style={{ fg: (netWorth()!.delta ?? 0) >= 0 ? theme().success : theme().error }}>
+                      {(netWorth()!.delta ?? 0) >= 0 ? "+" : "-"}{fmt(netWorth()!.delta ?? 0)}
+                    </span>
+                    <span style={{ fg: theme().textMuted }}>{" "}{formatDeltaLabel(netWorth()!.deltaDate)}</span>
+                  </Show>
+                </text>
+              </box>
+            </Show>
+
+            {/* Budgets */}
+            <Show when={budgets().length > 0}>
+              <box>
+                <text fg={theme().accent}>▌ Budgets</text>
+                <For each={budgets().slice(0, 5)}>
+                  {(b) => {
+                    const ratio = b.amount === 0 ? 0 : b.spent / b.amount
+                    const pct = `${Math.round(ratio * 100)}%`.padStart(4)
+                    const bar = progressBar(b.spent, b.amount, 6)
+                    const label = truncate(b.category, 10).padEnd(10)
+                    const color = ratio >= 1 ? theme().error : ratio >= 0.8 ? theme().warning : theme().success
+                    return (
+                      <text>
+                        <span style={{ fg: theme().textMuted }}>{label}</span>
+                        <span style={{ fg: color }}>{" "}{bar}{pct}</span>
+                      </text>
+                    )
+                  }}
+                </For>
+              </box>
+            </Show>
+
+            {/* Alerts summary */}
+            <Show when={alerts().length > 0}>
+              <box>
+                <For each={alerts().slice(0, 3)}>
+                  {(a) => (
+                    <text fg={a.severity === "critical" ? theme().error : theme().warning}>
+                      {a.severity === "critical" ? "✖ " : "~ "}{truncate(a.message, 34)}
+                    </text>
+                  )}
+                </For>
+              </box>
+            </Show>
+
+            {/* Upcoming bills */}
+            <Show when={upcoming().length > 0}>
+              <box>
+                <text fg={theme().accent}>▌ Upcoming</text>
+                <For each={upcoming()}>
+                  {(r) => {
+                    const date = new Date(r.next_due).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+                    const sign = r.type === "expense" ? "-" : "+"
+                    const color = r.type === "expense" ? theme().warning : theme().success
+                    return (
+                      <text>
+                        <span style={{ fg: theme().textMuted }}>{date}  </span>
+                        <span style={{ fg: color }}>{sign}{fmt(r.amount)}</span>
+                      </text>
+                    )
+                  }}
+                </For>
+              </box>
+            </Show>
           </box>
         </scrollbox>
 
         {/* Bottom fixed section */}
-        <box flexShrink={0} gap={1} paddingTop={1}>
-          {/* Getting started card */}
-          <Show when={!gettingStartedDismissed()}>
-            <box
-              paddingTop={1}
-              paddingBottom={1}
-              flexDirection="row"
-              gap={1}
-            >
-              <text flexShrink={0} fg={theme().text}>
-                ⬖
-              </text>
-              <box flexGrow={1} gap={1}>
-                <box flexDirection="row" justifyContent="space-between">
-                  <text fg={theme().accent}>▌ Getting started</text>
-                  <text fg={theme().textMuted} onMouseDown={() => setGettingStartedDismissed(true)}>
-                    ✕
-                  </text>
-                </box>
-                <text fg={theme().textMuted}>OpenFin is your AI-powered financial assistant.</text>
-                <text fg={theme().textMuted}>Set ANTHROPIC_API_KEY or OPENAI_API_KEY to get started.</text>
-                <box flexDirection="row" gap={1} justifyContent="space-between">
-                  <text fg={theme().text}>Go back home</text>
-                  <text fg={theme().textMuted}>Ctrl+B</text>
-                </box>
-              </box>
-            </box>
-          </Show>
-
-          {/* Directory */}
-          <text>
-            <span style={{ fg: theme().textMuted }}>{dirParent}</span>
-            <span style={{ fg: theme().text }}>{dirName}</span>
-          </text>
-
-          {/* Version */}
+        <box flexShrink={0} gap={1} paddingTop={1} border={["top"]} borderColor={theme().border}>
+          <box flexDirection="row" justifyContent="space-between">
+            <text fg={theme().textMuted}>Ctrl+B  home</text>
+            <text fg={theme().textMuted}>Ctrl+S  sidebar</text>
+          </box>
           <text fg={theme().textMuted}>
-            <span style={{ fg: theme().success }}>•</span> <b>Open</b>
-            <span style={{ fg: theme().text }}>
-              <b>Fin</b>
-            </span>{" "}
-            <span>{Installation.VERSION}</span>
+            <span style={{ fg: theme().success }}>•</span>{" "}
+            <span style={{ bold: true }}>Open</span>
+            <span style={{ fg: theme().text, bold: true }}>Fin</span>
+            {" "}{Installation.VERSION}
           </text>
         </box>
       </box>

@@ -1,4 +1,4 @@
-import { streamText, type ModelMessage } from "ai"
+import { streamText, stepCountIs, type ModelMessage } from "ai"
 import { Database, eq, desc } from "../storage/db"
 import { NotFoundError } from "../storage/db"
 import { SessionTable, MessageTable, PartTable } from "./session.sql"
@@ -233,13 +233,11 @@ export namespace Session {
     try {
       const model = await Provider.getModel(modelId)
       const tools = ToolRegistry.toAITools({ sessionID: sessionId, messageID: assistantMsgID, abort: controller.signal })
-      // 5. Manual tool loop — each iteration is one LLM step
-      const MAX_STEPS = 10
-      const MAX_STEPS_MESSAGE =
-        "\n\n[SYSTEM: Maximum steps reached. Tools are disabled. Summarize what you have done and what remains, then wait for the user.]"
+      const MAX_STEPS = 25
       // Doom loop detection: track last 3 tool signatures (tool + JSON input)
       const recentToolCalls: string[] = []
       const DOOM_LOOP_THRESHOLD = 3
+      let doomLoopDetected = false
       const userContent =
         attachments.length > 0
           ? [
@@ -252,117 +250,142 @@ export namespace Session {
               })),
             ]
           : content
-      let stepMessages: ModelMessage[] = [...history, { role: "user" as const, content: userContent }]
+      let lastFinishReason = "stop"
 
-      for (let step = 0; step < MAX_STEPS; step++) {
-        // Publish step-start part
-        const stepStartPartID = Identifier.ascending("part")
-        await Bus.publish(Message.Event.PartUpdated, {
-          sessionID: sessionId,
-          messageID: assistantMsgID,
-          part: {
-            id: stepStartPartID,
+      // 5. Let the AI SDK handle the tool loop natively via maxSteps
+      const result = streamText({
+        model,
+        system,
+        messages: [...history, { role: "user" as const, content: userContent }],
+        tools,
+        toolChoice: "auto",
+        stopWhen: stepCountIs(MAX_STEPS),
+        abortSignal: controller.signal,
+      })
+
+      for await (const part of result.fullStream) {
+        if (doomLoopDetected) break
+
+        if (part.type === "start-step") {
+          const stepStartPartID = Identifier.ascending("part")
+          await Bus.publish(Message.Event.PartUpdated, {
             sessionID: sessionId,
             messageID: assistantMsgID,
-            type: "step-start",
-          } satisfies Message.StepStartPart,
-        })
-
-        // Inject max-steps notice on the final step so the model knows tools are ending
-        const isLastStep = step === MAX_STEPS - 1
-        const lastMsg = stepMessages[stepMessages.length - 1]!
-        const effectiveMessages: ModelMessage[] = isLastStep
-          ? [
-              ...stepMessages.slice(0, -1),
-              {
-                ...lastMsg,
-                content:
-                  typeof lastMsg.content === "string" ? lastMsg.content + MAX_STEPS_MESSAGE : lastMsg.content,
-              } as ModelMessage,
-            ]
-          : stepMessages
-
-        const result = streamText({
-          model,
-          system,
-          messages: effectiveMessages,
-          tools: isLastStep ? {} : tools,
-          toolChoice: "auto",
-        })
-
-        for await (const part of result.fullStream) {
-          if (part.type === "text-delta") {
-            const delta = (part as any).text ?? (part as any).textDelta ?? ""
-            if (!delta) continue
-            fullText += delta
-            yield delta
-            // Publish text part with accumulated text — idempotent for TUI (set, not append)
-            await Bus.publish(Message.Event.PartUpdated, {
+            part: {
+              id: stepStartPartID,
               sessionID: sessionId,
               messageID: assistantMsgID,
-              part: {
-                id: assistantPartID,
-                sessionID: sessionId,
-                messageID: assistantMsgID,
-                type: "text",
-                text: fullText,
-                time: { start: now },
-              } satisfies Message.TextPart,
-            })
-          }
-          if (part.type === "error") throw (part as any).error
+              type: "step-start",
+            } satisfies Message.StepStartPart,
+          })
         }
 
-        const finishReason = await result.finishReason
+        if (part.type === "text-delta") {
+          const delta = part.text ?? ""
+          if (!delta) continue
+          fullText += delta
+          yield delta
+          // Publish text part with accumulated text — idempotent for TUI (set, not append)
+          await Bus.publish(Message.Event.PartUpdated, {
+            sessionID: sessionId,
+            messageID: assistantMsgID,
+            part: {
+              id: assistantPartID,
+              sessionID: sessionId,
+              messageID: assistantMsgID,
+              type: "text",
+              text: fullText,
+              time: { start: now },
+            } satisfies Message.TextPart,
+          })
+        }
 
-        // Accumulate token usage across steps
-        try {
-          const usage = await result.usage
-          totalInputTokens += usage.inputTokens ?? 0
-          totalOutputTokens += usage.outputTokens ?? 0
-        } catch {}
+        if (part.type === "tool-call") {
+          // Doom loop detection: if the same tool+input is called 3 times in a row, abort
+          const sig = `${part.toolName}:${JSON.stringify(part.input)}`
+          recentToolCalls.push(sig)
+          if (recentToolCalls.length > DOOM_LOOP_THRESHOLD) recentToolCalls.shift()
+          if (recentToolCalls.length === DOOM_LOOP_THRESHOLD && recentToolCalls.every((s) => s === sig)) {
+            log.warn("doom loop detected, breaking", { tool: part.toolName })
+            const loopWarning = `\n\n⚠️ Detected repeated identical calls to \`${part.toolName}\`. Stopping to avoid a loop. Please check what went wrong and try a different approach.`
+            fullText += loopWarning
+            yield loopWarning
+            doomLoopDetected = true
+          }
+        }
 
-        // Publish step-finish part
-        const stepFinishPartID = Identifier.ascending("part")
+        if (part.type === "finish-step") {
+          lastFinishReason = part.finishReason
+          log.info("step finished", { reason: part.finishReason, fullTextLength: fullText.length })
+          const stepFinishPartID = Identifier.ascending("part")
+          await Bus.publish(Message.Event.PartUpdated, {
+            sessionID: sessionId,
+            messageID: assistantMsgID,
+            part: {
+              id: stepFinishPartID,
+              sessionID: sessionId,
+              messageID: assistantMsgID,
+              type: "step-finish",
+              reason: part.finishReason,
+            } satisfies Message.StepFinishPart,
+          })
+        }
+
+        if (part.type === "error") throw (part as any).error
+      }
+
+      // Accumulate total token usage across all steps
+      try {
+        const usage = await result.totalUsage
+        totalInputTokens = usage.inputTokens ?? 0
+        totalOutputTokens = usage.outputTokens ?? 0
+      } catch {}
+
+      log.info("stream completed", {
+        lastFinishReason,
+        fullTextLength: fullText.length,
+        doomLoopDetected,
+        totalInputTokens,
+        totalOutputTokens,
+      })
+
+      // Fallback: if no text was generated after a normal completion, emit a notice
+      if (!fullText && !doomLoopDetected && lastFinishReason !== "length") {
+        const notice = "[The model ran all tools but did not generate a text response. Please try again or rephrase your request.]"
+        fullText += notice
+        yield notice
         await Bus.publish(Message.Event.PartUpdated, {
           sessionID: sessionId,
           messageID: assistantMsgID,
           part: {
-            id: stepFinishPartID,
+            id: assistantPartID,
             sessionID: sessionId,
             messageID: assistantMsgID,
-            type: "step-finish",
-            reason: finishReason,
-          } satisfies Message.StepFinishPart,
+            type: "text",
+            text: fullText,
+            time: { start: now },
+          } satisfies Message.TextPart,
         })
+      }
 
-        if (finishReason !== "tool-calls") break
-
-        const { messages: newMessages } = await result.response
-
-        // Doom loop detection: if the same tool is called with the same input 3 times, abort
-        for (const msg of newMessages) {
-          if (msg.role !== "assistant") continue
-          const parts = Array.isArray(msg.content) ? msg.content : []
-          for (const part of parts) {
-            if ((part as any).type !== "tool-call") continue
-            const sig = `${(part as any).toolName}:${JSON.stringify((part as any).args)}`
-            recentToolCalls.push(sig)
-            if (recentToolCalls.length > DOOM_LOOP_THRESHOLD) recentToolCalls.shift()
-            if (
-              recentToolCalls.length === DOOM_LOOP_THRESHOLD &&
-              recentToolCalls.every((s) => s === sig)
-            ) {
-              log.warn("doom loop detected, breaking", { tool: (part as any).toolName })
-              const loopWarning = `\n\n⚠️ Detected repeated identical calls to \`${(part as any).toolName}\`. Stopping to avoid a loop. Please check what went wrong and try a different approach.`
-              fullText += loopWarning
-              yield loopWarning
-              return
-            }
-          }
-        }
-
-        stepMessages = [...stepMessages, ...newMessages]
+      // Notify user if the loop was cut short by context limit
+      if (lastFinishReason === "length") {
+        const notice =
+          "\n\n⚠️ [Context limit reached. The response was cut off. Try a new session or break the request into smaller steps.]"
+        fullText += notice
+        yield notice
+        await Bus.publish(Message.Event.PartUpdated, {
+          sessionID: sessionId,
+          messageID: assistantMsgID,
+          part: {
+            id: assistantPartID,
+            sessionID: sessionId,
+            messageID: assistantMsgID,
+            type: "text",
+            text: fullText,
+            time: { start: now },
+          } satisfies Message.TextPart,
+        })
       }
 
       const completedAt = Date.now()

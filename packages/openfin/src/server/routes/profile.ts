@@ -16,9 +16,10 @@ export const ProfileRoutes = lazy(() =>
 
     // Net worth history — last 30 days for sparkline/chart
     const history = Profile.getNetWorthHistory(30)
-    const latest = history[0]
-    const previous = history[1]
-    const delta = latest && previous ? latest.net_worth - previous.net_worth : undefined
+    const lastSnapshot = history[0]
+    const liveNetWorth = assets - totalDebts
+    // delta = live value vs last recorded snapshot (not snapshot-to-snapshot)
+    const delta = lastSnapshot ? liveNetWorth - lastSnapshot.net_worth : undefined
 
     // Top expenses this month sorted descending
     const topExpenses = [...spent.entries()]
@@ -30,9 +31,10 @@ export const ProfileRoutes = lazy(() =>
       netWorth: {
         assets,
         debts: totalDebts,
-        net_worth: assets - totalDebts,
+        net_worth: liveNetWorth,
         currency: "MXN",
         delta,
+        deltaDate: lastSnapshot?.date,
       },
       netWorthHistory: history.map((h) => ({ date: h.date, value: h.net_worth })).reverse(),
       topExpenses,

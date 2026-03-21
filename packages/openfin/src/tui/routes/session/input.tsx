@@ -290,19 +290,32 @@ export function SessionInput(props: SessionInputProps) {
               r?.focus()
             }}
           />
-          <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} alignItems="center">
-            <text fg={theme().accent}>OpenFin </text>
+          <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} alignItems="center" justifyContent="space-between">
+            <box flexDirection="row" gap={1} alignItems="center">
+              <Show
+                when={isStreaming()}
+                fallback={
+                  <text>
+                    <span style={{ fg: theme().success }}>{"●"}</span>
+                    <span style={{ fg: theme().textMuted }}>{" ready"}</span>
+                  </text>
+                }
+              >
+                <Spinner color={theme().accent}>responding</Spinner>
+              </Show>
+              <text fg={theme().textMuted}>{"·"}</text>
+              <text fg={theme().textMuted}>{modelName()}</text>
+            </box>
             <Show
               when={isStreaming()}
-              fallback={<text fg={theme().textMuted}>ready</text>}
+              fallback={
+                <text fg={theme().textMuted}>{"↑↓ history  ⏎ send  / commands"}</text>
+              }
             >
-              <Spinner color={theme().accent}>responding</Spinner>
-            </Show>
-            <text fg={theme().textMuted}>·</text>
-            <text fg={theme().textMuted}>{modelName()}</text>
-            <Show when={isStreaming()}>
-              <text fg={theme().textMuted}>·</text>
-              <text fg={theme().text}>Esc <span style={{ fg: theme().textMuted }}>interrupt</span></text>
+              <text>
+                <span style={{ fg: theme().text }}>{"Esc"}</span>
+                <span style={{ fg: theme().textMuted }}>{" to interrupt"}</span>
+              </text>
             </Show>
           </box>
         </box>

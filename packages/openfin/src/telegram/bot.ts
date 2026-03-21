@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard } from "grammy"
 import { api, API_BASE } from "../tui/context/sdk"
 import { SessionMap } from "./session-map"
+import { mdToTelegramHtml } from "./md-to-html"
 
 const DEBOUNCE_MS = 800 // edit message at most every 800ms (Telegram rate limit)
 
@@ -48,7 +49,9 @@ async function editWithDebounce(bot: Bot, stream: StreamSession, force = false) 
   }
   stream.lastEdit = Date.now()
   try {
-    await bot.api.editMessageText(stream.chatId, stream.telegramMessageId, stream.content || "…")
+    await bot.api.editMessageText(stream.chatId, stream.telegramMessageId, mdToTelegramHtml(stream.content || "…"), {
+      parse_mode: "HTML",
+    })
   } catch {
     // message may not have changed — ignore Telegram's "message is not modified" error
   }
@@ -166,7 +169,9 @@ async function handleSSEEvent(bot: Bot, event: { type: string; properties: any }
     if (stream.editTimer) clearTimeout(stream.editTimer)
     // Final edit with full content
     try {
-      await bot.api.editMessageText(stream.chatId, stream.telegramMessageId, stream.content || "…")
+      await bot.api.editMessageText(stream.chatId, stream.telegramMessageId, mdToTelegramHtml(stream.content || "…"), {
+        parse_mode: "HTML",
+      })
     } catch {}
     activeStreams.delete(sessionID)
   }

@@ -116,7 +116,11 @@ const SyncContext = createSimpleContext({
         setStore(produce((s) => {
           s.messages[sessionId] = messages
           for (const [messageId, parts] of Object.entries(partsMap)) {
-            s.parts[messageId] = parts
+            // Merge instead of overwrite — preserve tool parts that arrived via SSE
+            const existing = s.parts[messageId] ?? []
+            const merged = new Map(existing.map((p) => [p.id, p]))
+            for (const p of parts) merged.set(p.id, p)
+            s.parts[messageId] = Array.from(merged.values())
           }
           after?.(s)
         }))

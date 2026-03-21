@@ -19,11 +19,8 @@ export function Footer() {
 
   return (
     <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0}>
-      <text fg={theme().textMuted}>{process.cwd()}</text>
-      <box gap={2} flexDirection="row" flexShrink={0}>
-        <text fg={theme().textMuted}>{modelLabel()}</text>
-        <text fg={theme().textMuted}>/help</text>
-      </box>
+      <text fg={theme().textMuted}>{"? for shortcuts"}</text>
+      <text fg={theme().textMuted}>{modelLabel()}</text>
     </box>
   )
 }

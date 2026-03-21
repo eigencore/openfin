@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, Show, Switch, Match } from "solid-js"
+import { createEffect, createMemo, For, Show, Switch, Match } from "solid-js"
 import type { RGBA } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
@@ -164,16 +164,26 @@ function AssistantBubble(props: {
 
   const parts = createMemo(() => {
     const all = sync.store.parts[props.messageID] ?? []
-    return all.filter((p): p is Message.ToolPart => p.type === "tool")
+    const toolParts = all.filter((p): p is Message.ToolPart => p.type === "tool")
+    // Deduplicate by id, then for stateful tools keep only last invocation
+    const seen = new Map<string, Message.ToolPart>()
+    for (const p of toolParts) seen.set(p.id, p)
+    const deduped = Array.from(seen.values())
+    const STATEFUL_TOOLS = new Set(["todowrite", "todoread"])
+    const lastStateful = new Map<string, Message.ToolPart>()
+    for (const p of deduped) {
+      if (STATEFUL_TOOLS.has(p.tool)) lastStateful.set(p.tool, p)
+    }
+    return deduped.filter((p) => !STATEFUL_TOOLS.has(p.tool) || lastStateful.get(p.tool) === p)
   })
 
   return (
     <box marginTop={1} flexShrink={0}>
-      {/* Tool parts rendered before the text */}
+      {/* Tool parts first */}
       <For each={parts()}>
         {(part) => <ToolPartRow part={part} />}
       </For>
-      {/* Text content */}
+      {/* Text content below tools */}
       <Show when={props.content.trim()}>
         <box paddingLeft={3}>
           <code
@@ -207,57 +217,87 @@ function AssistantBubble(props: {
   )
 }
 
+// Stable sentinel placed at the end of the display list so the text box is
+// always the last item rendered by <For>. Its reference never changes so
+// SolidJS will never remount the component even when tool parts are inserted
+// before it — guaranteeing text is always below tools in the DOM.
+const STREAMING_TEXT_ENTRY = { id: "__streaming_text" as const }
+
 function StreamingAssistantBubble(props: { sessionID: string; syntax: SyntaxStyle }) {
   const { theme } = useTheme()
   const sync = useSync()
 
-  // Read content directly from store — fine-grained reactive update inside this component
+  // Fine-grained read — only this memo reruns on each text-delta
   const content = createMemo(() => sync.store.streaming[props.sessionID]?.content ?? "")
 
-  // Collect tool parts from all streaming messages (keyed by messageID)
-  const toolParts = createMemo(() => {
-    const allParts = sync.store.parts
-    const result: Message.ToolPart[] = []
-    for (const [, msgParts] of Object.entries(allParts)) {
-      for (const p of msgParts) {
-        if (p.type === "tool") result.push(p)
-      }
-    }
-    // Deduplicate by id, keep last
-    const seen = new Map<string, Message.ToolPart>()
-    for (const p of result) seen.set(p.id, p)
-    return Array.from(seen.values())
+  // IDs of already-committed messages — their tool parts are rendered by AssistantBubble
+  const committedIDs = createMemo(() => {
+    const msgs = sync.store.messages[props.sessionID] ?? []
+    return new Set(msgs.map((m) => m.id))
   })
 
-  // Only show tool parts that belong to the current streaming session
-  const sessionToolParts = createMemo(() =>
-    toolParts().filter((p) => p.sessionID === props.sessionID),
+  // Collect tool parts only from the active (non-committed) streaming turn
+  const sessionToolParts = createMemo(() => {
+    const allParts = sync.store.parts
+    const committed = committedIDs()
+    const result: Message.ToolPart[] = []
+    for (const [msgID, msgParts] of Object.entries(allParts)) {
+      if (committed.has(msgID)) continue
+      for (const p of msgParts) {
+        if (p.type === "tool" && p.sessionID === props.sessionID) result.push(p)
+      }
+    }
+    const seen = new Map<string, Message.ToolPart>()
+    for (const p of result) seen.set(p.id, p)
+    const parts = Array.from(seen.values())
+    const STATEFUL_TOOLS = new Set(["todowrite", "todoread"])
+    const lastStateful = new Map<string, Message.ToolPart>()
+    for (const p of parts) {
+      if (STATEFUL_TOOLS.has(p.tool)) lastStateful.set(p.tool, p)
+    }
+    const deduped: Message.ToolPart[] = []
+    for (const p of parts) {
+      if (!STATEFUL_TOOLS.has(p.tool) || lastStateful.get(p.tool) === p) deduped.push(p)
+    }
+    return deduped
+  })
+
+  // Single ordered list: tool parts first, text sentinel always last.
+  // displayItems only changes when tools arrive (not on every text-delta),
+  // so <For> never remounts the text component during streaming.
+  const displayItems = createMemo(
+    (): (Message.ToolPart | typeof STREAMING_TEXT_ENTRY)[] => [...sessionToolParts(), STREAMING_TEXT_ENTRY],
   )
 
   return (
     <box marginTop={1} flexShrink={0}>
-      <For each={sessionToolParts()}>
-        {(part) => <ToolPartRow part={part} />}
-      </For>
-      <Show
-        when={content()}
-        fallback={
-          <box paddingLeft={3}>
-            <Spinner>Thinking...</Spinner>
-          </box>
-        }
-      >
+      <Show when={sessionToolParts().length === 0 && !content()}>
         <box paddingLeft={3}>
-          <code
-            filetype="markdown"
-            drawUnstyledText={false}
-            streaming={true}
-            syntaxStyle={props.syntax}
-            content={content().trim()}
-            fg={theme().text}
-          />
+          <Spinner>Thinking...</Spinner>
         </box>
       </Show>
+      <For each={displayItems()}>
+        {(item) => {
+          if (item.id === "__streaming_text") {
+            // content() updates reactively inside without causing <For> to remount
+            return (
+              <box paddingLeft={3}>
+                <Show when={content()}>
+                  <code
+                    filetype="markdown"
+                    drawUnstyledText={false}
+                    streaming={true}
+                    syntaxStyle={props.syntax}
+                    content={content().trim()}
+                    fg={theme().text}
+                  />
+                </Show>
+              </box>
+            )
+          }
+          return <ToolPartRow part={item as Message.ToolPart} />
+        }}
+      </For>
     </box>
   )
 }
@@ -303,73 +343,73 @@ function ToolPartRow(props: { part: Message.ToolPart }) {
         <TransactionTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "pay_debt"}>
-        <LabeledTool part={props.part} pendingLabel="Paying debt..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "contribute_to_goal"}>
-        <LabeledTool part={props.part} pendingLabel="Contributing to goal..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "transfer_between_accounts"}>
-        <LabeledTool part={props.part} pendingLabel="Transferring funds..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "delete_account"}>
-        <LabeledTool part={props.part} pendingLabel="Deleting account..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "delete_debt"}>
-        <LabeledTool part={props.part} pendingLabel="Deleting debt..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "delete_budget"}>
-        <LabeledTool part={props.part} pendingLabel="Deleting budget..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "delete_goal"}>
-        <LabeledTool part={props.part} pendingLabel="Deleting goal..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "delete_transaction"}>
-        <LabeledTool part={props.part} pendingLabel="Deleting transaction..." />
+        <LabeledTool part={props.part} />
       </Match>
       {/* ── Analysis tools ── */}
       <Match when={props.part.tool === "analyze_expenses"}>
         <AnalyzeTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "check_alerts"}>
-        <LabeledTool part={props.part} pendingLabel="Checking alerts..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "get_net_worth"}>
-        <LabeledTool part={props.part} pendingLabel="Calculating net worth..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "get_price"}>
         <PriceTool part={props.part} />
       </Match>
       {/* ── List tools ── */}
       <Match when={props.part.tool === "list_accounts"}>
-        <LabeledTool part={props.part} pendingLabel="Loading accounts..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "list_debts"}>
-        <LabeledTool part={props.part} pendingLabel="Loading debts..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "list_budgets"}>
-        <LabeledTool part={props.part} pendingLabel="Loading budgets..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "list_goals"}>
-        <LabeledTool part={props.part} pendingLabel="Loading goals..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "list_transactions"}>
-        <LabeledTool part={props.part} pendingLabel="Loading transactions..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "list_portfolio"}>
-        <LabeledTool part={props.part} pendingLabel="Loading portfolio..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "list_recurring"}>
-        <LabeledTool part={props.part} pendingLabel="Loading recurring..." />
+        <LabeledTool part={props.part} />
       </Match>
       {/* ── Portfolio tools ── */}
       <Match when={props.part.tool === "add_position"}>
-        <LabeledTool part={props.part} pendingLabel="Adding position..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "update_position"}>
-        <LabeledTool part={props.part} pendingLabel="Updating position..." />
+        <LabeledTool part={props.part} />
       </Match>
       <Match when={props.part.tool === "close_position"}>
-        <LabeledTool part={props.part} pendingLabel="Closing position..." />
+        <LabeledTool part={props.part} />
       </Match>
       {/* ── Todo / Skill tools ── */}
       <Match when={props.part.tool === "todowrite" || props.part.tool === "todoread"}>
@@ -379,6 +419,75 @@ function ToolPartRow(props: { part: Message.ToolPart }) {
         <SkillTool part={props.part} />
       </Match>
     </Switch>
+  )
+}
+
+// ── TreeTool — base visual primitive (replaces InlineTool) ─────────────────────
+// States:
+//   queued  →  ·  tool(args)          (dimmed, waiting to run)
+//   running →  ⠋  tool(args)          (spinner)
+//   done    →  ●  tool(args)          (success dot + result on next line)
+//   error   →  ✗  tool(args)          (error + message on next line)
+
+function TreeTool(props: {
+  tool: string
+  args?: string
+  running: boolean
+  complete: boolean
+  error?: string
+  result?: string
+}) {
+  const { theme } = useTheme()
+
+  return (
+    <box paddingLeft={3} marginTop={0} flexDirection="column">
+      <Show
+        when={props.running}
+        fallback={
+          <Show
+            when={props.complete || !!props.error}
+            fallback={
+              // queued state
+              <text>
+                <span style={{ fg: theme().textMuted }}>{"·  "}</span>
+                <span style={{ fg: theme().textMuted }}>{props.tool}</span>
+                <Show when={props.args}>
+                  <span style={{ fg: theme().textMuted }}>{props.args}</span>
+                </Show>
+              </text>
+            }
+          >
+            {/* complete or error */}
+            <text>
+              <span style={{ fg: props.error ? theme().error : theme().success }}>
+                {props.error ? "✗" : "●"}
+              </span>
+              {"  "}
+              <span style={{ fg: theme().text }}>{props.tool}</span>
+              <Show when={props.args}>
+                <span style={{ fg: theme().textMuted }}>{props.args}</span>
+              </Show>
+            </text>
+            <Show when={props.result || props.error}>
+              <text>
+                <span style={{ fg: theme().textMuted }}>{"   └ "}</span>
+                <span style={{ fg: props.error ? theme().error : theme().textMuted }}>
+                  {props.error ?? props.result}
+                </span>
+              </text>
+            </Show>
+          </Show>
+        }
+      >
+        {/* running */}
+        <Spinner color={theme().accent}>
+          <span style={{ fg: theme().textMuted }}>{props.tool}</span>
+          <Show when={props.args}>
+            <span style={{ fg: theme().textMuted }}>{props.args}</span>
+          </Show>
+        </Spinner>
+      </Show>
+    </box>
   )
 }
 
@@ -393,15 +502,14 @@ function AccountTool(props: { part: Message.ToolPart }) {
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
   return (
-    <InlineTool
+    <TreeTool
       tool={props.part.tool}
-      pending={`Saving account ${inp().name ?? ""}...`}
+      args={inp().name ? `(${inp().name})` : undefined}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? `Account ${inp().name ?? ""}`}
-    </InlineTool>
+      result={title() ?? (inp().name ? `account saved` : undefined)}
+    />
   )
 }
 
@@ -414,15 +522,14 @@ function DebtTool(props: { part: Message.ToolPart }) {
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
   return (
-    <InlineTool
+    <TreeTool
       tool={props.part.tool}
-      pending={`Saving debt ${inp().name ?? ""}...`}
+      args={inp().name ? `(${inp().name})` : undefined}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? `Debt ${inp().name ?? ""}`}
-    </InlineTool>
+      result={title() ?? `debt saved`}
+    />
   )
 }
 
@@ -435,15 +542,14 @@ function BudgetTool(props: { part: Message.ToolPart }) {
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
   return (
-    <InlineTool
+    <TreeTool
       tool={props.part.tool}
-      pending={`Saving budget ${inp().category ?? ""}...`}
+      args={inp().category ? `(${inp().category})` : undefined}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? `Budget ${inp().category ?? ""}`}
-    </InlineTool>
+      result={title() ?? `budget saved`}
+    />
   )
 }
 
@@ -456,15 +562,14 @@ function GoalTool(props: { part: Message.ToolPart }) {
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
   return (
-    <InlineTool
+    <TreeTool
       tool={props.part.tool}
-      pending={`Saving goal ${inp().name ?? ""}...`}
+      args={inp().name ? `(${inp().name})` : undefined}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? `Goal ${inp().name ?? ""}`}
-    </InlineTool>
+      result={title() ?? `goal saved`}
+    />
   )
 }
 
@@ -476,74 +581,22 @@ function TransactionTool(props: { part: Message.ToolPart }) {
   const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
-  const pendingLabel = () => {
+  const args = () => {
     const i = inp()
     const dir = i.type === "income" ? "income" : "expense"
     const amount = i.amount != null ? ` $${i.amount}` : ""
-    return `Logging ${dir}${amount}...`
+    return `(${dir}${amount})`
   }
 
   return (
-    <InlineTool
+    <TreeTool
       tool={props.part.tool}
-      pending={pendingLabel()}
+      args={args()}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? (inp().description ?? "Transaction")}
-    </InlineTool>
-  )
-}
-
-function AnalyzeTool(props: { part: Message.ToolPart }) {
-  const { theme } = useTheme()
-  const inp = () => props.part.state.input as { period?: string }
-  const isRunning = () => props.part.state.status === "running"
-  const isCompleted = () => props.part.state.status === "completed"
-  const isError = () => props.part.state.status === "error"
-  const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
-  const output = () => (props.part.state.status === "completed" ? props.part.state.output : undefined)
-  const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
-
-  const [expanded, setExpanded] = createSignal(false)
-  const outputLines = createMemo(() => output()?.split("\n") ?? [])
-  const overflow = createMemo(() => outputLines().length > 10)
-  const limitedOutput = createMemo(() => {
-    const o = output() ?? ""
-    if (!overflow() || expanded()) return o
-    return [...outputLines().slice(0, 10), "…"].join("\n")
-  })
-
-  return (
-    <Show
-      when={isCompleted()}
-      fallback={
-        <InlineTool
-          tool={props.part.tool}
-          pending={`Analyzing ${inp().period ?? "expenses"}...`}
-          running={isRunning()}
-          complete={isError()}
-          error={error()}
-        >
-          {title() ?? `Analyze ${inp().period ?? ""}`}
-        </InlineTool>
-      }
-    >
-      <BlockTool
-        title={title() ?? "Analysis"}
-        running={false}
-        error={error()}
-        onClick={overflow() ? () => setExpanded((p) => !p) : undefined}
-      >
-        <box gap={1}>
-          <text fg={theme().text}>{limitedOutput()}</text>
-          <Show when={overflow()}>
-            <text fg={theme().textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
-          </Show>
-        </box>
-      </BlockTool>
-    </Show>
+      result={title() ?? inp().description ?? `transaction logged`}
+    />
   )
 }
 
@@ -556,119 +609,76 @@ function PriceTool(props: { part: Message.ToolPart }) {
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
   return (
-    <InlineTool
+    <TreeTool
       tool={props.part.tool}
-      pending={`Fetching ${inp().symbol ?? "price"}...`}
+      args={inp().symbol ? `(${inp().symbol})` : undefined}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? `Price ${inp().symbol ?? ""}`}
-    </InlineTool>
+      result={title()}
+    />
   )
 }
+
+// ── AnalyzeTool — compact tree row ─────────────────────────────────────────────
+
+function AnalyzeTool(props: { part: Message.ToolPart }) {
+  const inp = () => props.part.state.input as { period?: string }
+  const isRunning = () => props.part.state.status === "running"
+  const isCompleted = () => props.part.state.status === "completed"
+  const isError = () => props.part.state.status === "error"
+  const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
+  const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
+
+  return (
+    <TreeTool
+      tool={props.part.tool}
+      args={inp().period ? `(${inp().period})` : undefined}
+      running={isRunning()}
+      complete={isCompleted() || isError()}
+      error={error()}
+      result={title()}
+    />
+  )
+}
+
+// ── GenericTool — fallback for unrecognized tools ──────────────────────────────
 
 function GenericTool(props: { part: Message.ToolPart }) {
-  const { theme } = useTheme()
   const isRunning = () => props.part.state.status === "running"
   const isCompleted = () => props.part.state.status === "completed"
   const isError = () => props.part.state.status === "error"
   const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
-  const output = () => (props.part.state.status === "completed" ? props.part.state.output : undefined)
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
-  const [expanded, setExpanded] = createSignal(false)
-  const outputLines = createMemo(() => output()?.split("\n") ?? [])
-  const overflow = createMemo(() => outputLines().length > 8)
-  const limitedOutput = createMemo(() => {
-    const o = output() ?? ""
-    if (!overflow() || expanded()) return o
-    return [...outputLines().slice(0, 8), "…"].join("\n")
-  })
-
   return (
-    <Show
-      when={output() !== undefined}
-      fallback={
-        <InlineTool
-          tool={props.part.tool}
-          pending={`${props.part.tool}...`}
-          running={isRunning()}
-          complete={isCompleted() || isError()}
-          error={error()}
-        >
-          {title() ?? props.part.tool}
-        </InlineTool>
-      }
-    >
-      <BlockTool
-        title={title() ?? props.part.tool}
-        running={isRunning()}
-        error={error()}
-        onClick={overflow() ? () => setExpanded((p) => !p) : undefined}
-      >
-        <box gap={1}>
-          <text fg={theme().text}>{limitedOutput()}</text>
-          <Show when={overflow()}>
-            <text fg={theme().textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
-          </Show>
-        </box>
-      </BlockTool>
-    </Show>
+    <TreeTool
+      tool={props.part.tool}
+      running={isRunning()}
+      complete={isCompleted() || isError()}
+      error={error()}
+      result={title()}
+    />
   )
 }
 
-// ── LabeledTool — generic tool with a custom pending label ─────────────────────
-// While running: InlineTool spinner with the given label.
-// When completed: BlockTool with collapsible output (same as GenericTool).
+// ── LabeledTool — compact tree row ─────────────────────────────────────────────
 
-function LabeledTool(props: { part: Message.ToolPart; pendingLabel: string }) {
-  const { theme } = useTheme()
+function LabeledTool(props: { part: Message.ToolPart }) {
   const isRunning = () => props.part.state.status === "running"
   const isCompleted = () => props.part.state.status === "completed"
   const isError = () => props.part.state.status === "error"
   const title = () => (props.part.state.status === "completed" ? props.part.state.title : undefined)
-  const output = () => (props.part.state.status === "completed" ? props.part.state.output : undefined)
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
-  const [expanded, setExpanded] = createSignal(false)
-  const outputLines = createMemo(() => output()?.split("\n") ?? [])
-  const overflow = createMemo(() => outputLines().length > 8)
-  const limitedOutput = createMemo(() => {
-    const o = output() ?? ""
-    if (!overflow() || expanded()) return o
-    return [...outputLines().slice(0, 8), "…"].join("\n")
-  })
-
   return (
-    <Show
-      when={output() !== undefined}
-      fallback={
-        <InlineTool
-          tool={props.part.tool}
-          pending={props.pendingLabel}
-          running={isRunning()}
-          complete={isCompleted() || isError()}
-          error={error()}
-        >
-          {title() ?? props.part.tool}
-        </InlineTool>
-      }
-    >
-      <BlockTool
-        title={title() ?? props.part.tool}
-        running={isRunning()}
-        error={error()}
-        onClick={overflow() ? () => setExpanded((p) => !p) : undefined}
-      >
-        <box gap={1}>
-          <text fg={theme().text}>{limitedOutput()}</text>
-          <Show when={overflow()}>
-            <text fg={theme().textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
-          </Show>
-        </box>
-      </BlockTool>
-    </Show>
+    <TreeTool
+      tool={props.part.tool}
+      running={isRunning()}
+      complete={isCompleted() || isError()}
+      error={error()}
+      result={title()}
+    />
   )
 }
 
@@ -716,8 +726,8 @@ function TodoTool(props: { part: Message.ToolPart }) {
         fallback={
           <Show when={todos().length > 0}>
             <text>
-              <span style={{ fg: isError() ? theme().error : theme().textMuted }}>
-                {isError() ? "✗" : "✓"}
+              <span style={{ fg: isError() ? theme().error : theme().success }}>
+                {isError() ? "✗" : "●"}
               </span>
               {"  "}
               <span style={{ fg: theme().textMuted }}>{"todowrite"}</span>
@@ -731,14 +741,12 @@ function TodoTool(props: { part: Message.ToolPart }) {
       >
         <Spinner color={theme().accent}>
           <span style={{ fg: theme().textMuted }}>{"todowrite"}</span>
-          {"  "}
-          <span style={{ fg: theme().textMuted }}>{"updating tasks..."}</span>
         </Spinner>
       </Show>
 
       {/* Todo rows — always visible once we have todos */}
       <Show when={todos().length > 0}>
-        <box flexDirection="column" paddingLeft={3} marginTop={0}>
+        <box flexDirection="column" paddingLeft={5} marginTop={0}>
           <For each={todos()}>
             {(todo) => (
               <text>
@@ -773,97 +781,13 @@ function SkillTool(props: { part: Message.ToolPart }) {
   const error = () => (props.part.state.status === "error" ? props.part.state.error : undefined)
 
   return (
-    <InlineTool
+    <TreeTool
       tool="skill"
-      pending={`Loading skill: ${inp().name ?? ""}...`}
+      args={inp().name ? `(${inp().name})` : undefined}
       running={isRunning()}
       complete={isCompleted() || isError()}
       error={error()}
-    >
-      {title() ?? `skill: ${inp().name ?? ""}`}
-    </InlineTool>
-  )
-}
-
-function InlineTool(props: {
-  tool: string
-  pending: string
-  complete: boolean
-  running: boolean
-  error: string | undefined
-  children: any
-}) {
-  const { theme } = useTheme()
-
-  return (
-    <box paddingLeft={3} marginTop={0}>
-      <Show
-        when={props.running}
-        fallback={
-          <Show
-            when={props.complete || !!props.error}
-            fallback={<text fg={theme().textMuted}>· {props.pending}</text>}
-          >
-            <text>
-              <span style={{ fg: props.error ? theme().error : theme().textMuted }}>
-                {props.error ? "✗" : "✓"}
-              </span>
-              {"  "}
-              <span style={{ fg: theme().textMuted }}>{props.tool}</span>
-              {"  "}
-              <span style={{ fg: props.error ? theme().error : theme().textMuted }}>
-                {props.children}
-              </span>
-            </text>
-          </Show>
-        }
-      >
-        <Spinner color={theme().accent}>
-          <span style={{ fg: theme().textMuted }}>{props.tool}</span>
-          {"  "}
-          {props.children}
-        </Spinner>
-      </Show>
-      <Show when={props.error}>
-        <text fg={theme().error}>{props.error}</text>
-      </Show>
-    </box>
-  )
-}
-
-function BlockTool(props: {
-  title: string
-  running: boolean
-  error?: string
-  onClick?: () => void
-  children: any
-}) {
-  const { theme } = useTheme()
-
-  return (
-    <box
-      border={["left"]}
-      paddingTop={1}
-      paddingBottom={1}
-      paddingLeft={2}
-      marginTop={1}
-      gap={1}
-      customBorderChars={SplitBorder.customBorderChars}
-      borderColor={theme().border}
-      onMouseUp={() => props.onClick?.()}
-    >
-      <Show
-        when={props.running}
-        fallback={
-          <text fg={theme().textMuted}>{props.title}</text>
-        }
-      >
-        <Spinner color={theme().accent}>{props.title}</Spinner>
-      </Show>
-      {props.children}
-      <Show when={props.error}>
-        <text fg={theme().error}>{props.error}</text>
-      </Show>
-    </box>
+      result={title()}
+    />
   )
 }
