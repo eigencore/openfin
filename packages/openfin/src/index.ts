@@ -37,10 +37,11 @@ async function startServer() {
   const { SkillTool } = await import("./tool/skill")
   const { TodoWriteTool, TodoReadTool } = await import("./tool/todo")
   const { PurchaseAdvisorTool } = await import("./tool/purchase-advisor")
+  const { WebSearchTool } = await import("./tool/web-search")
   const { Profile } = await import("./profile/profile")
   const { Bus } = await import("./bus/index")
 
-  ToolRegistry.register(GetPriceTool, SkillTool, TodoWriteTool, TodoReadTool, PurchaseAdvisorTool, ...ProfileTools, ...PortfolioTools)
+  ToolRegistry.register(GetPriceTool, SkillTool, TodoWriteTool, TodoReadTool, PurchaseAdvisorTool, WebSearchTool, ...ProfileTools, ...PortfolioTools)
 
   function runDailyScheduler() {
     // Net worth snapshot

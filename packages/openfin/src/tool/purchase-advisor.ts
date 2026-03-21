@@ -12,6 +12,9 @@ export const PurchaseAdvisorTool = Tool.define("evaluate_purchase", {
     "Analyze whether a purchase is financially sound given the user's current financial situation. " +
     "Call this whenever the user asks 'should I buy X', 'can I afford Y', 'is it worth buying Z', " +
     "'quiero comprar X', 'me conviene comprar', or any similar purchase consideration. " +
+    "IMPORTANT: If the user has NOT provided a price, call search_web FIRST to find current prices " +
+    "(e.g. 'iPhone 16 Pro precio México'), then call this tool with the price you found. " +
+    "If the user provides a URL or product link, search for the price online before evaluating. " +
     "Returns a structured analysis with liquidity check, budget headroom, debt priority, goals impact, " +
     "and a clear verdict. Use the output to give the user a well-informed recommendation.",
 
