@@ -11,34 +11,31 @@
 Track accounts, credit cards, debts, budgets, goals, and investments through a natural conversation —
 no cloud, no subscriptions, no spreadsheets.
 
-```
-You: I spent $450 at the grocery store with my Banamex card
-OpenFin: Expense logged: $450.00 MXN in Food — "grocery store" (Mar 19)
-         Banamex card: $3,240.00 MXN owed / limit $50,000.00
-         ⚠️  You're at 78% of your Food budget this month.
-```
+![OpenFin demo](images/demo.jpeg)
 
 </div>
 
 ## Installation
 
-**npm**
-```bash
-npm install -g openfin-ai
-openfin
-```
-
-**curl**
+**curl** — macOS / Linux (installs a native binary to `~/.local/bin`)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/eigencore/openfin/main/install.sh | bash
 ```
+> If `~/.local/bin` is not in your `$PATH`, the installer will tell you what to add to your shell profile.
 
-**From source**
+**npm** — all platforms including Windows (requires Node.js ≥ 18)
+```bash
+npm install -g openfin-ai
+```
+
+**From source** (requires [Bun](https://bun.sh) ≥ 1.3)
 ```bash
 git clone https://github.com/eigencore/openfin
 cd openfin && bun install
-bun run dev
+bun run dev   # starts the HTTP server on port 4096
 ```
+
+After installing, run `openfin auth login` to configure your API key — see **[Setup](#setup)** below.
 
 ## Setup
 
